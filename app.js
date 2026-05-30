@@ -17,6 +17,15 @@ const state = {
 
 // --- Utilities ---
 
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('visible');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('visible'), 2200);
+}
+
 function debounce(fn, delay) {
   let timer;
   return (...args) => {
@@ -244,10 +253,7 @@ shareBtn.addEventListener('click', () => {
     bname: state.b.name,
   });
   const url = location.origin + location.pathname + '?' + params;
-  navigator.clipboard.writeText(url).then(() => {
-    shareBtn.textContent = 'Copied!';
-    setTimeout(() => { shareBtn.textContent = 'Copy share link'; }, 2000);
-  });
+  navigator.clipboard.writeText(url).then(() => showToast('Link copied to clipboard'));
 });
 
 // --- Midpoint ---

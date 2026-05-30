@@ -100,6 +100,8 @@ $mapboxToken = defined('MAPBOX_TOKEN') ? MAPBOX_TOKEN : '';
 
   </main>
 
+  <div id="toast" role="status" aria-live="polite"></div>
+
   <script src="https://api.mapbox.com/mapbox-gl-js/v3.24.0/mapbox-gl.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
   <script>window.MAPBOX_TOKEN = <?php echo json_encode($mapboxToken); ?>;</script>
