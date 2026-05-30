@@ -13,6 +13,7 @@ const state = {
   activeFilters: new Set(),
   sortBy: 'rating',
   midpoint: null,
+  longRoute: false,
   searching: false,
 };
 
@@ -111,6 +112,40 @@ function setupInput(inputEl, listEl, targetKey) {
     state[targetKey] = null;
     updateControls();
     debouncedSearch(inputEl.value.trim());
+  });
+
+  inputEl.addEventListener('keydown', (e) => {
+    const items = listEl.querySelectorAll('li');
+    const current = listEl.querySelector('li[aria-selected="true"]');
+    const idx = current ? [...items].indexOf(current) : -1;
+
+    if (e.key === 'ArrowDown') {
+      if (!items.length) return;
+      e.preventDefault();
+      const next = items[Math.min(idx + 1, items.length - 1)];
+      if (current) current.removeAttribute('aria-selected');
+      next.setAttribute('aria-selected', 'true');
+      next.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'ArrowUp') {
+      if (!items.length) return;
+      e.preventDefault();
+      if (idx <= 0) return;
+      const prev = items[idx - 1];
+      current.removeAttribute('aria-selected');
+      prev.setAttribute('aria-selected', 'true');
+      prev.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter') {
+      const target = current || items[0];
+      if (target) {
+        e.preventDefault();
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      }
+    } else if (e.key === 'Tab') {
+      const target = current || items[0];
+      if (target) target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    } else if (e.key === 'Escape') {
+      listEl.innerHTML = '';
+    }
   });
 
   inputEl.addEventListener('blur', () => {
@@ -258,10 +293,7 @@ shareBtn.addEventListener('click', () => {
 
 // --- Midpoint ---
 
-async function getMidpoint(a, b, distanceKm) {
-  if (distanceKm < 100) {
-    return { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 };
-  }
+async function getRouteData(a, b) {
   const params = new URLSearchParams({
     action: 'route',
     originLat: a.lat,
@@ -271,8 +303,12 @@ async function getMidpoint(a, b, distanceKm) {
   });
   const res = await fetch('api.php?' + params);
   const data = await res.json();
-  if (data.error) throw new Error(data.error);
-  return data.midpoint;
+  if (data.error) {
+    const err = new Error(data.error);
+    err.noRoute = true;
+    throw err;
+  }
+  return data; // { midpoint, p33, p67 }
 }
 
 // --- Restaurant fetch & filter ---
@@ -328,9 +364,9 @@ async function fetchAllCandidates(a, b, distanceKm) {
   });
 }
 
-// Keep restaurants whose projection onto the A-B segment falls in [25%, 75%]
+// Keep restaurants whose projection onto the A-B segment falls in [minT, maxT]
 // and whose perpendicular distance is within the corridor buffer.
-function filterByCorridor(restaurants, a, b, distanceKm) {
+function filterByCorridor(restaurants, a, b, distanceKm, minT = 0.25, maxT = 0.75) {
   const bufKm = corridorBufferKm(distanceKm);
   const ABx = b.lng - a.lng;
   const ABy = b.lat - a.lat;
@@ -342,7 +378,7 @@ function filterByCorridor(restaurants, a, b, distanceKm) {
 
     // Projection fraction along A-B (0 = at A, 1 = at B)
     const t = ((rLng - a.lng) * ABx + (rLat - a.lat) * ABy) / AB2;
-    if (t < 0.25 || t > 0.75) return false;
+    if (t < minT || t > maxT) return false;
 
     // Perpendicular distance from the projection point to the restaurant
     const projLat = a.lat + t * ABy;
@@ -371,15 +407,14 @@ function initMap(center) {
 
 // Corridor: buffer the 25%-to-75% line segment by corridorBufferKm.
 // Stays entirely within the A-B bounding box.
-function corridorGeoJSON(a, b, distanceKm) {
-  const p25 = [a.lng + 0.25 * (b.lng - a.lng), a.lat + 0.25 * (b.lat - a.lat)];
-  const p75 = [a.lng + 0.75 * (b.lng - a.lng), a.lat + 0.75 * (b.lat - a.lat)];
-  const line = turf.lineString([p25, p75]);
+function corridorGeoJSON(a, b, distanceKm, minT = 0.25, maxT = 0.75) {
+  const pStart = [a.lng + minT * (b.lng - a.lng), a.lat + minT * (b.lat - a.lat)];
+  const pEnd   = [a.lng + maxT * (b.lng - a.lng), a.lat + maxT * (b.lat - a.lat)];
+  const line = turf.lineString([pStart, pEnd]);
   return turf.buffer(line, corridorBufferKm(distanceKm), { units: 'kilometers', steps: 16 });
 }
 
-function drawZone(map, a, b, distanceKm) {
-  const geojson = corridorGeoJSON(a, b, distanceKm);
+function drawZone(map, geojson) {
   if (!geojson) return;
   if (map.getSource('zone')) {
     map.getSource('zone').setData(geojson);
@@ -431,9 +466,16 @@ function addMarkers(map, a, b, restaurants) {
   });
 
   const bounds = new mapboxgl.LngLatBounds();
-  bounds.extend([a.lng, a.lat]);
-  bounds.extend([b.lng, b.lat]);
+  // For long routes A and B are hundreds of km away — fit to restaurant area only.
+  if (!state.longRoute) {
+    bounds.extend([a.lng, a.lat]);
+    bounds.extend([b.lng, b.lat]);
+  }
   restaurants.forEach(r => bounds.extend([r.geometry.location.lng, r.geometry.location.lat]));
+  if (bounds.isEmpty()) {
+    bounds.extend([a.lng, a.lat]);
+    bounds.extend([b.lng, b.lat]);
+  }
   map.fitBounds(bounds, { padding: 70, maxZoom: 14 });
 }
 
@@ -554,16 +596,47 @@ async function runSearch() {
     document.getElementById('results-list').innerHTML = '<div class="search-loading">Finding restaurants in the middle…</div>';
     const map = initMap(midpoint);
 
-    let raw;
-    if (distanceKm < 100) {
+    const longRoute = distanceKm >= 75;
+    state.longRoute = longRoute;
+    const [minT, maxT] = longRoute ? [1/3, 2/3] : [0.25, 0.75];
+
+    let raw, zoneGeoJSON;
+    if (!longRoute) {
       raw = await fetchAllCandidates(a, b, distanceKm);
+      zoneGeoJSON = corridorGeoJSON(a, b, distanceKm, minT, maxT);
     } else {
-      const routeMid = await getMidpoint(a, b, distanceKm);
-      state.midpoint = routeMid;
-      raw = await fetchRestaurants(routeMid.lat, routeMid.lng, 15000);
+      const routeData = await getRouteData(a, b);
+      state.midpoint = routeData.midpoint;
+
+      // Search sequentially at 33%, 50%, 67% of driving route — sequential to
+      // avoid triggering the server's concurrent-request rate limiter.
+      const routePoints = [routeData.p33, routeData.midpoint, routeData.p67];
+      const seen = new Set();
+      raw = [];
+      let routeFailCount = 0;
+      for (const p of routePoints) {
+        try {
+          const batch = await fetchRestaurants(p.lat, p.lng, 15000);
+          batch.forEach(r => {
+            if (!seen.has(r.place_id)) { seen.add(r.place_id); raw.push(r); }
+          });
+        } catch { routeFailCount++; }
+      }
+      if (routeFailCount >= 2) showToast('Some search areas failed — results may be incomplete.');
+
+      zoneGeoJSON = turf.buffer(
+        turf.lineString([
+          [routeData.p33.lng, routeData.p33.lat],
+          [routeData.midpoint.lng, routeData.midpoint.lat],
+          [routeData.p67.lng, routeData.p67.lat],
+        ]),
+        15, { units: 'kilometers', steps: 16 }
+      );
     }
 
-    const filtered = filterByCorridor(raw, a, b, distanceKm);
+    const filtered = longRoute
+      ? raw
+      : filterByCorridor(raw, a, b, distanceKm, minT, maxT);
     state.allResults = filtered;
 
     // Pre-compute distances so sort and render don't repeat haversine calls
@@ -578,11 +651,11 @@ async function runSearch() {
     const displayResults = applySort(applyFilters(filtered));
 
     if (map.isStyleLoaded()) {
-      drawZone(map, a, b, distanceKm);
+      drawZone(map, zoneGeoJSON);
       addMarkers(map, a, b, displayResults);
     } else {
       map.once('load', () => {
-        drawZone(map, a, b, distanceKm);
+        drawZone(map, zoneGeoJSON);
         addMarkers(map, a, b, displayResults);
       });
     }
@@ -592,8 +665,17 @@ async function runSearch() {
     console.error(err);
     document.getElementById('map-section').hidden = false;
     document.getElementById('results-section').hidden = false;
-    document.getElementById('results-header').textContent = 'Search failed — please try again.';
-    document.getElementById('results-list').innerHTML = '';
+    if (err.noRoute) {
+      document.getElementById('results-header').textContent = 'No driveable route found between these locations.';
+      document.getElementById('results-list').innerHTML = '';
+      // Still show the two pins so the user can see what was searched
+      const map = state.map || initMap({ lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 });
+      const showPins = () => { placeMarker(map, a.lat, a.lng, 'marker-a', 'You: ' + a.name); placeMarker(map, b.lat, b.lng, 'marker-b', 'Friend: ' + b.name); map.fitBounds([[a.lng, a.lat], [b.lng, b.lat]], { padding: 70 }); };
+      if (map.isStyleLoaded()) showPins(); else map.once('load', showPins);
+    } else {
+      document.getElementById('results-header').textContent = 'Search failed — please try again.';
+      document.getElementById('results-list').innerHTML = '';
+    }
   } finally {
     state.searching = false;
     searchBtn.disabled = false;

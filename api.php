@@ -223,9 +223,12 @@ if ($action === 'autocomplete') {
     $polyline    = $response['routes'][0]['overview_polyline']['points'];
     $totalMeters = $response['routes'][0]['legs'][0]['distance']['value'];
     $decoded     = decodePolyline($polyline);
-    $midpoint    = findRouteMidpoint($decoded, $totalMeters);
 
-    echo json_encode(['midpoint' => $midpoint]);
+    echo json_encode([
+        'midpoint' => findRoutePoint($decoded, $totalMeters, 0.5),
+        'p33'      => findRoutePoint($decoded, $totalMeters, 1/3),
+        'p67'      => findRoutePoint($decoded, $totalMeters, 2/3),
+    ]);
 
 } else {
     http_response_code(400);
@@ -271,8 +274,8 @@ function haversineKm($lat1, $lng1, $lat2, $lng2) {
     return $R * 2 * atan2(sqrt($a), sqrt(1 - $a));
 }
 
-function findRouteMidpoint($points, $totalMeters) {
-    $targetKm    = ($totalMeters / 1000) / 2;
+function findRoutePoint($points, $totalMeters, $fraction) {
+    $targetKm    = ($totalMeters / 1000) * $fraction;
     $accumulated = 0.0;
 
     for ($i = 1; $i < count($points); $i++) {
