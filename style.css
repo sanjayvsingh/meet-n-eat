@@ -471,6 +471,32 @@ main {
   background: #f0f0ff;
 }
 
+/* ---------- Search loading ---------- */
+
+.search-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.5rem 0;
+  color: #888;
+  font-size: 0.9rem;
+}
+
+.search-loading::before {
+  content: '';
+  width: 18px;
+  height: 18px;
+  border: 2px solid #ddd;
+  border-top-color: #4f46e5;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ---------- Toast ---------- */
 
 #toast {
