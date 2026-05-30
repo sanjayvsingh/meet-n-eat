@@ -70,7 +70,14 @@ $mapboxToken = defined('MAPBOX_TOKEN') ? MAPBOX_TOKEN : '';
 
     <section class="results-section" id="results-section" hidden>
       <div class="results-bar">
-        <div id="results-header"></div>
+        <div class="results-bar-left">
+          <div id="results-header"></div>
+          <select id="sort-select" class="sort-select">
+            <option value="rating">Rating (best first)</option>
+            <option value="distance">Distance from midpoint</option>
+            <option value="price">Price (low to high)</option>
+          </select>
+        </div>
         <div class="filters" id="filters">
           <button class="filter-btn" id="filter-open" data-filter="open">Open now</button>
           <span class="filter-divider"></span>

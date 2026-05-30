@@ -234,12 +234,20 @@ main {
   height: 18px;
   background: #f59e0b;
   cursor: pointer;
-  transition: transform 0.1s;
+  transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.marker-restaurant.hover {
+  background: #ea580c;
+  transform: scale(1.7);
+  box-shadow: 0 0 0 4px rgba(234, 88, 12, 0.3);
+  z-index: 5;
 }
 
 .marker-restaurant.active {
   background: #d97706;
   transform: scale(1.35);
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.4);
   z-index: 10;
 }
 
@@ -254,8 +262,31 @@ main {
   margin-bottom: 1rem;
 }
 
+.results-bar-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
 #results-header {
   flex-shrink: 0;
+}
+
+.sort-select {
+  padding: 0.25rem 0.5rem;
+  border: 1.5px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: #555;
+  background: white;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.sort-select:focus {
+  outline: none;
+  border-color: #4f46e5;
 }
 
 .filters {

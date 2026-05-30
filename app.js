@@ -10,6 +10,8 @@ const state = {
   markers: [],
   allResults: [],  // full unfiltered result set, preserved for filter re-runs
   activeFilters: new Set(),
+  sortBy: 'rating',
+  midpoint: null,
   searching: false,
 };
 
@@ -157,14 +159,37 @@ function applyFilters(restaurants) {
   });
 }
 
+function applySort(restaurants) {
+  const sorted = [...restaurants];
+  if (state.sortBy === 'distance' && state.midpoint) {
+    sorted.sort((x, y) => {
+      const dX = haversineKm(state.midpoint.lat, state.midpoint.lng, x.geometry.location.lat, x.geometry.location.lng);
+      const dY = haversineKm(state.midpoint.lat, state.midpoint.lng, y.geometry.location.lat, y.geometry.location.lng);
+      return dX - dY;
+    });
+  } else if (state.sortBy === 'price') {
+    sorted.sort((x, y) => (x.price_level || 99) - (y.price_level || 99));
+  } else {
+    sorted.sort((x, y) => (y.rating || 0) - (x.rating || 0));
+  }
+  return sorted;
+}
+
 function refreshResults() {
-  const visible = applyFilters(state.allResults);
+  const visible = applySort(applyFilters(state.allResults));
   renderResults(visible, state.a, state.b);
   if (state.map) {
     if (state.map.isStyleLoaded()) {
       addMarkers(state.map, state.a, state.b, visible);
     }
   }
+}
+
+function setupSort() {
+  document.getElementById('sort-select').addEventListener('change', (e) => {
+    state.sortBy = e.target.value;
+    refreshResults();
+  });
 }
 
 function setupFilters() {
@@ -450,6 +475,8 @@ function renderResults(restaurants, a, b) {
       <a class="card-link" href="${mapsUrl}" target="_blank" rel="noopener noreferrer">View on Maps</a>
     `;
 
+    card.addEventListener('mouseenter', () => hoverResult(i));
+    card.addEventListener('mouseleave', () => unhoverResult());
     card.addEventListener('click', (e) => {
       if (e.target.closest('.card-link')) return;
       highlightResult(i);
@@ -457,6 +484,16 @@ function renderResults(restaurants, a, b) {
 
     list.appendChild(card);
   });
+}
+
+function hoverResult(index) {
+  document.querySelectorAll('.marker-restaurant').forEach(el => {
+    el.classList.toggle('hover', parseInt(el.dataset.index) === index);
+  });
+}
+
+function unhoverResult() {
+  document.querySelectorAll('.marker-restaurant').forEach(el => el.classList.remove('hover'));
 }
 
 function highlightResult(index) {
@@ -493,6 +530,7 @@ async function runSearch() {
   try {
     const distanceKm = haversineKm(a.lat, a.lng, b.lat, b.lng);
     const midpoint = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 };
+    state.midpoint = midpoint;
 
     let raw;
     if (distanceKm < 100) {
@@ -503,21 +541,22 @@ async function runSearch() {
     }
 
     const filtered = filterByCorridor(raw, a, b, distanceKm);
-    filtered.sort((x, y) => (y.rating || 0) - (x.rating || 0));
 
-    // Cache full results so filters can re-run without re-fetching
+    // Cache full results so filters/sort can re-run without re-fetching
     state.allResults = filtered;
 
     document.getElementById('map-section').hidden = false;
     document.getElementById('results-section').hidden = false;
 
+    const displayResults = applySort(applyFilters(filtered));
+
     const map = initMap(midpoint);
     map.on('load', () => {
       drawZone(map, a, b, distanceKm);
-      addMarkers(map, a, b, applyFilters(filtered));
+      addMarkers(map, a, b, displayResults);
     });
 
-    renderResults(applyFilters(filtered), a, b);
+    renderResults(displayResults, a, b);
 
     if (filtered.length > 0) {
       document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
@@ -546,6 +585,7 @@ async function init() {
     return;
   }
 
+  setupSort();
   setupFilters();
 
   setupInput(
