@@ -414,6 +414,27 @@ function corridorGeoJSON(a, b, distanceKm, minT = 0.25, maxT = 0.75) {
   return turf.buffer(line, corridorBufferKm(distanceKm), { units: 'kilometers', steps: 16 });
 }
 
+function drawRoute(map, polylinePoints) {
+  const geojson = {
+    type: 'Feature',
+    geometry: { type: 'LineString', coordinates: polylinePoints.map(p => [p.lng, p.lat]) },
+  };
+  if (map.getSource('route')) { map.getSource('route').setData(geojson); return; }
+  map.addSource('route', { type: 'geojson', data: geojson });
+  map.addLayer({
+    id: 'route-line',
+    type: 'line',
+    source: 'route',
+    layout: { 'line-join': 'round', 'line-cap': 'round' },
+    paint: { 'line-color': '#4f46e5', 'line-width': 3, 'line-opacity': 0.45 },
+  });
+}
+
+function clearRoute(map) {
+  if (map.getLayer('route-line')) map.removeLayer('route-line');
+  if (map.getSource('route')) map.removeSource('route');
+}
+
 function drawZone(map, geojson) {
   if (!geojson) return;
   if (map.getSource('zone')) {
@@ -507,7 +528,7 @@ function renderResults(restaurants, a, b) {
     const rating = r.rating ? `★${r.rating} (${r.user_ratings_total.toLocaleString()})` : 'No rating';
     const price = r.price_level ? '$'.repeat(r.price_level) : '';
     const isOpen = r.opening_hours?.open_now;
-    const cuisine = formatCuisine(r.types);
+    const cuisine = r.primary_type || formatCuisine(r.types);
     const mapsUrl = `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(r.place_id)}`;
 
     const card = document.createElement('div');
@@ -600,13 +621,14 @@ async function runSearch() {
     state.longRoute = longRoute;
     const [minT, maxT] = longRoute ? [1/3, 2/3] : [0.25, 0.75];
 
-    let raw, zoneGeoJSON;
+    let raw, zoneGeoJSON, routePolyline = null;
     if (!longRoute) {
       raw = await fetchAllCandidates(a, b, distanceKm);
       zoneGeoJSON = corridorGeoJSON(a, b, distanceKm, minT, maxT);
     } else {
       const routeData = await getRouteData(a, b);
       state.midpoint = routeData.midpoint;
+      routePolyline = routeData.polyline || null;
 
       // Search sequentially at 33%, 50%, 67% of driving route — sequential to
       // avoid triggering the server's concurrent-request rate limiter.
@@ -650,15 +672,14 @@ async function runSearch() {
 
     const displayResults = applySort(applyFilters(filtered));
 
-    if (map.isStyleLoaded()) {
+    const applyMapLayers = () => {
+      if (routePolyline) drawRoute(map, routePolyline);
+      else clearRoute(map);
       drawZone(map, zoneGeoJSON);
       addMarkers(map, a, b, displayResults);
-    } else {
-      map.once('load', () => {
-        drawZone(map, zoneGeoJSON);
-        addMarkers(map, a, b, displayResults);
-      });
-    }
+    };
+    if (map.isStyleLoaded()) applyMapLayers();
+    else map.once('load', applyMapLayers);
 
     renderResults(displayResults, a, b);
   } catch (err) {

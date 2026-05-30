@@ -162,7 +162,7 @@ if ($action === 'autocomplete') {
             ],
             [
                 $authHeader,
-                'X-Goog-FieldMask: places.id,places.displayName,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.types,places.formattedAddress,places.location',
+                'X-Goog-FieldMask: places.id,places.displayName,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.types,places.primaryTypeDisplayName,places.formattedAddress,places.location',
             ]
         ),
         true
@@ -189,6 +189,7 @@ if ($action === 'autocomplete') {
                                     ? ['open_now' => $p['currentOpeningHours']['openNow']]
                                     : null,
             'types'             => $p['types'] ?? [],
+            'primary_type'      => $p['primaryTypeDisplayName']['text'] ?? null,
             'vicinity'          => $p['formattedAddress'] ?? '',
             'geometry'          => [
                 'location' => [
@@ -207,10 +208,11 @@ if ($action === 'autocomplete') {
     $dLng = floatval($_GET['destLng']   ?? 0);
 
     $url = 'https://maps.googleapis.com/maps/api/directions/json?' . http_build_query([
-        'origin'      => "$oLat,$oLng",
-        'destination' => "$dLat,$dLng",
-        'mode'        => 'driving',
-        'key'         => GOOGLE_API_KEY,
+        'origin'         => "$oLat,$oLng",
+        'destination'    => "$dLat,$dLng",
+        'mode'           => 'driving',
+        'departure_time' => 'now',
+        'key'            => GOOGLE_API_KEY,
     ]);
 
     $response = json_decode(httpGet($url), true);
@@ -228,6 +230,7 @@ if ($action === 'autocomplete') {
         'midpoint' => findRoutePoint($decoded, $totalMeters, 0.5),
         'p33'      => findRoutePoint($decoded, $totalMeters, 1/3),
         'p67'      => findRoutePoint($decoded, $totalMeters, 2/3),
+        'polyline' => $decoded,
     ]);
 
 } else {
