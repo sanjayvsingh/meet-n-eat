@@ -245,12 +245,12 @@ const shareBtn = document.getElementById('share-btn');
 shareBtn.addEventListener('click', () => {
   if (!state.a || !state.b) return;
   const params = new URLSearchParams({
-    alat: state.a.lat,
-    alng: state.a.lng,
-    aname: state.a.name,
-    blat: state.b.lat,
-    blng: state.b.lng,
-    bname: state.b.name,
+    alat: state.a.lat.toFixed(5),
+    alng: state.a.lng.toFixed(5),
+    aname: state.a.name.split(',')[0].trim(),
+    blat: state.b.lat.toFixed(5),
+    blng: state.b.lng.toFixed(5),
+    bname: state.b.name.split(',')[0].trim(),
   });
   const url = location.origin + location.pathname + '?' + params;
   navigator.clipboard.writeText(url).then(() => showToast('Link copied to clipboard'));
