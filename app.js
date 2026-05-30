@@ -13,6 +13,7 @@ const state = {
   activeFilters: new Set(),
   sortBy: 'rating',
   midpoint: null,
+  longRoute: false,
   searching: false,
 };
 
@@ -465,9 +466,16 @@ function addMarkers(map, a, b, restaurants) {
   });
 
   const bounds = new mapboxgl.LngLatBounds();
-  bounds.extend([a.lng, a.lat]);
-  bounds.extend([b.lng, b.lat]);
+  // For long routes A and B are hundreds of km away — fit to restaurant area only.
+  if (!state.longRoute) {
+    bounds.extend([a.lng, a.lat]);
+    bounds.extend([b.lng, b.lat]);
+  }
   restaurants.forEach(r => bounds.extend([r.geometry.location.lng, r.geometry.location.lat]));
+  if (bounds.isEmpty()) {
+    bounds.extend([a.lng, a.lat]);
+    bounds.extend([b.lng, b.lat]);
+  }
   map.fitBounds(bounds, { padding: 70, maxZoom: 14 });
 }
 
@@ -589,6 +597,7 @@ async function runSearch() {
     const map = initMap(midpoint);
 
     const longRoute = distanceKm >= 75;
+    state.longRoute = longRoute;
     const [minT, maxT] = longRoute ? [1/3, 2/3] : [0.25, 0.75];
 
     let raw, zoneGeoJSON;
@@ -599,18 +608,21 @@ async function runSearch() {
       const routeData = await getRouteData(a, b);
       state.midpoint = routeData.midpoint;
 
-      // Search at 33%, 50%, and 67% of the driving route for broader coverage
+      // Search sequentially at 33%, 50%, 67% of driving route — sequential to
+      // avoid triggering the server's concurrent-request rate limiter.
       const routePoints = [routeData.p33, routeData.midpoint, routeData.p67];
-      const settled = await Promise.allSettled(
-        routePoints.map(p => fetchRestaurants(p.lat, p.lng, 15000))
-      );
-      if (settled.filter(r => r.status === 'rejected').length >= 2)
-        showToast('Some search areas failed — results may be incomplete.');
       const seen = new Set();
-      raw = settled
-        .filter(r => r.status === 'fulfilled')
-        .flatMap(r => r.value)
-        .filter(r => { if (seen.has(r.place_id)) return false; seen.add(r.place_id); return true; });
+      raw = [];
+      let routeFailCount = 0;
+      for (const p of routePoints) {
+        try {
+          const batch = await fetchRestaurants(p.lat, p.lng, 15000);
+          batch.forEach(r => {
+            if (!seen.has(r.place_id)) { seen.add(r.place_id); raw.push(r); }
+          });
+        } catch { routeFailCount++; }
+      }
+      if (routeFailCount >= 2) showToast('Some search areas failed — results may be incomplete.');
 
       zoneGeoJSON = turf.buffer(
         turf.lineString([
