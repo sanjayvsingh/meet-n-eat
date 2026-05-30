@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meet &amp; Eat</title>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header>
+    <h1>Meet &amp; Eat</h1>
+    <p>Find a restaurant halfway between you and a friend</p>
+  </header>
+
+  <main>
+
+    <section class="search-row">
+
+      <div class="input-group">
+        <label for="location-a">You</label>
+        <div class="input-row">
+          <input
+            type="text"
+            id="location-a"
+            placeholder="Address, postal code, or landmark"
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <button class="locate-btn" data-target="a" title="Use my current location">📍</button>
+        </div>
+        <ul class="autocomplete-list" id="autocomplete-a" role="listbox"></ul>
+      </div>
+
+      <div class="input-group">
+        <label for="location-b">Friend</label>
+        <div class="input-row">
+          <input
+            type="text"
+            id="location-b"
+            placeholder="Address, postal code, or landmark"
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <button class="locate-btn" data-target="b" title="Use friend's location">📍</button>
+        </div>
+        <ul class="autocomplete-list" id="autocomplete-b" role="listbox"></ul>
+      </div>
+
+      <div class="action-buttons">
+        <button id="search-btn" disabled>Go</button>
+        <button id="share-btn" hidden title="Copy share link">
+          <span class="material-icons">share</span>
+        </button>
+      </div>
+
+    </section>
+
+    <section class="map-section" id="map-section" hidden>
+      <div id="map"></div>
+    </section>
+
+    <section class="results-section" id="results-section" hidden>
+      <div id="results-header"></div>
+      <div id="results-list"></div>
+    </section>
+
+  </main>
+
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+  <script src="app.js"></script>
+
+</body>
+</html>
