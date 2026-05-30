@@ -1,3 +1,5 @@
+DirectoryIndex index.php
+
 # Disable directory listing
 Options -Indexes
 
