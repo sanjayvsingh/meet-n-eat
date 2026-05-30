@@ -139,7 +139,8 @@ main {
   border-top: none;
 }
 
-.autocomplete-list li:hover {
+.autocomplete-list li:hover,
+.autocomplete-list li[aria-selected="true"] {
   background: #f0f0ff;
   color: #4f46e5;
 }

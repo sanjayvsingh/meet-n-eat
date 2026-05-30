@@ -113,6 +113,33 @@ function setupInput(inputEl, listEl, targetKey) {
     debouncedSearch(inputEl.value.trim());
   });
 
+  inputEl.addEventListener('keydown', (e) => {
+    const items = listEl.querySelectorAll('li');
+    if (!items.length) return;
+    const current = listEl.querySelector('li[aria-selected="true"]');
+    const idx = current ? [...items].indexOf(current) : -1;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = items[Math.min(idx + 1, items.length - 1)];
+      if (current) current.removeAttribute('aria-selected');
+      next.setAttribute('aria-selected', 'true');
+      next.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (idx <= 0) return;
+      const prev = items[idx - 1];
+      current.removeAttribute('aria-selected');
+      prev.setAttribute('aria-selected', 'true');
+      prev.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter' && current) {
+      e.preventDefault();
+      current.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    } else if (e.key === 'Escape') {
+      listEl.innerHTML = '';
+    }
+  });
+
   inputEl.addEventListener('blur', () => {
     setTimeout(() => { listEl.innerHTML = ''; }, 150);
   });
@@ -382,8 +409,7 @@ function corridorGeoJSON(a, b, distanceKm, minT = 0.25, maxT = 0.75) {
   return turf.buffer(line, corridorBufferKm(distanceKm), { units: 'kilometers', steps: 16 });
 }
 
-function drawZone(map, a, b, distanceKm, minT = 0.25, maxT = 0.75) {
-  const geojson = corridorGeoJSON(a, b, distanceKm, minT, maxT);
+function drawZone(map, geojson) {
   if (!geojson) return;
   if (map.getSource('zone')) {
     map.getSource('zone').setData(geojson);
@@ -570,7 +596,12 @@ async function runSearch() {
       raw = await fetchRestaurants(routeMid.lat, routeMid.lng, 15000);
     }
 
-    const filtered = filterByCorridor(raw, a, b, distanceKm, minT, maxT);
+    // For long routes the route-midpoint search already constrains the area;
+    // applying the straight-line corridor filter would reject everything if the
+    // road detours significantly (e.g. around Lake Erie).
+    const filtered = longRoute
+      ? raw
+      : filterByCorridor(raw, a, b, distanceKm, minT, maxT);
     state.allResults = filtered;
 
     // Pre-compute distances so sort and render don't repeat haversine calls
@@ -584,12 +615,17 @@ async function runSearch() {
 
     const displayResults = applySort(applyFilters(filtered));
 
+    // Zone: circle around route midpoint for long routes, corridor band for short
+    const zoneGeoJSON = longRoute
+      ? turf.circle([state.midpoint.lng, state.midpoint.lat], 15, { units: 'kilometers', steps: 32 })
+      : corridorGeoJSON(a, b, distanceKm, minT, maxT);
+
     if (map.isStyleLoaded()) {
-      drawZone(map, a, b, distanceKm, minT, maxT);
+      drawZone(map, zoneGeoJSON);
       addMarkers(map, a, b, displayResults);
     } else {
       map.once('load', () => {
-        drawZone(map, a, b, distanceKm, minT, maxT);
+        drawZone(map, zoneGeoJSON);
         addMarkers(map, a, b, displayResults);
       });
     }
