@@ -1,4 +1,4 @@
-# Meet & Eat
+# Meet 'n Eat
 
 Find a restaurant roughly halfway between two people's locations.
 
