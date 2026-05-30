@@ -36,7 +36,7 @@ $mapboxToken = defined('MAPBOX_TOKEN') ? MAPBOX_TOKEN : '';
             autocomplete="off"
             spellcheck="false"
           >
-          <button class="locate-btn" data-target="a" title="Use my current location">📍</button>
+          <button class="locate-btn" data-target="a" title="Use my current location"><span class="material-icons">pin_drop</span></button>
         </div>
         <ul class="autocomplete-list" id="autocomplete-a" role="listbox"></ul>
       </div>

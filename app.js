@@ -111,18 +111,18 @@ function setupLocateButton(btn, inputEl, targetKey) {
       alert('Geolocation is not supported by your browser.');
       return;
     }
-    btn.textContent = '⏳';
+    btn.innerHTML = '<span class="material-icons">hourglass_empty</span>';
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude: lat, longitude: lng } = pos.coords;
         state[targetKey] = { lat, lng, name: 'My location' };
         inputEl.value = 'My location';
-        btn.textContent = '📍';
+        btn.innerHTML = '<span class="material-icons">pin_drop</span>';
         updateControls();
         if (state.a && state.b) runSearch();
       },
       () => {
-        btn.textContent = '📍';
+        btn.innerHTML = '<span class="material-icons">pin_drop</span>';
         alert('Could not get your location. Please type an address instead.');
       }
     );
