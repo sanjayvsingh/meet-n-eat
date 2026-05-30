@@ -1,5 +1,5 @@
-// Mapbox token is loaded from config.php via api.php?action=config on startup
-let MAPBOX_TOKEN = '';
+// Mapbox token is injected by config.js.php at page load as window.MAPBOX_TOKEN
+let MAPBOX_TOKEN = window.MAPBOX_TOKEN || '';
 
 // --- State ---
 
@@ -534,10 +534,6 @@ searchBtn.addEventListener('click', runSearch);
 // --- Startup ---
 
 async function init() {
-  const res = await fetch('api.php?action=config');
-  const cfg = await res.json();
-  MAPBOX_TOKEN = cfg.mapboxToken;
-
   setupFilters();
 
   setupInput(

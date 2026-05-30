@@ -23,10 +23,7 @@ function httpGet($url) {
     return file_get_contents($url);
 }
 
-if ($action === 'config') {
-    echo json_encode(['mapboxToken' => MAPBOX_TOKEN]);
-
-} elseif ($action === 'autocomplete') {
+if ($action === 'autocomplete') {
     $input = trim($_GET['input'] ?? '');
     if ($input === '') { echo json_encode(['predictions' => []]); exit; }
 
