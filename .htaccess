@@ -17,5 +17,16 @@
     Deny from all
 </Files>
 
+# Process index.html through PHP so it can inject the Mapbox token inline
+<Files "index.html">
+    SetHandler application/x-httpd-php
+</Files>
+
+# Block config.js.php — no longer needed
+<Files "config.js.php">
+    Order allow,deny
+    Deny from all
+</Files>
+
 # Disable directory listing
 Options -Indexes
