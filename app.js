@@ -534,6 +534,12 @@ searchBtn.addEventListener('click', runSearch);
 // --- Startup ---
 
 async function init() {
+  if (!MAPBOX_TOKEN) {
+    document.querySelector('main').innerHTML =
+      '<p style="padding:2rem;color:#dc2626">Configuration error: config.js.php is missing or did not load. Upload it to the server alongside the other files.</p>';
+    return;
+  }
+
   setupFilters();
 
   setupInput(
