@@ -487,16 +487,9 @@ function addMarkers(map, a, b, restaurants) {
   });
 
   const bounds = new mapboxgl.LngLatBounds();
-  // For long routes A and B are hundreds of km away — fit to restaurant area only.
-  if (!state.longRoute) {
-    bounds.extend([a.lng, a.lat]);
-    bounds.extend([b.lng, b.lat]);
-  }
+  bounds.extend([a.lng, a.lat]);
+  bounds.extend([b.lng, b.lat]);
   restaurants.forEach(r => bounds.extend([r.geometry.location.lng, r.geometry.location.lat]));
-  if (bounds.isEmpty()) {
-    bounds.extend([a.lng, a.lat]);
-    bounds.extend([b.lng, b.lat]);
-  }
   map.fitBounds(bounds, { padding: 70, maxZoom: 14 });
 }
 

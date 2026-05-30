@@ -208,11 +208,10 @@ if ($action === 'autocomplete') {
     $dLng = floatval($_GET['destLng']   ?? 0);
 
     $url = 'https://maps.googleapis.com/maps/api/directions/json?' . http_build_query([
-        'origin'         => "$oLat,$oLng",
-        'destination'    => "$dLat,$dLng",
-        'mode'           => 'driving',
-        'departure_time' => 'now',
-        'key'            => GOOGLE_API_KEY,
+        'origin'      => "$oLat,$oLng",
+        'destination' => "$dLat,$dLng",
+        'mode'        => 'driving',
+        'key'         => GOOGLE_API_KEY,
     ]);
 
     $response = json_decode(httpGet($url), true);
