@@ -353,8 +353,8 @@ function filterByCorridor(restaurants, a, b, distanceKm) {
 
 function initMap(center) {
   if (state.map) {
-    state.map.remove();
-    state.map = null;
+    state.map.jumpTo({ center: [center.lng, center.lat], zoom: 11 });
+    return state.map;
   }
   mapboxgl.accessToken = MAPBOX_TOKEN;
   state.map = new mapboxgl.Map({
@@ -564,10 +564,15 @@ async function runSearch() {
     const displayResults = applySort(applyFilters(filtered));
 
     const map = initMap(midpoint);
-    map.on('load', () => {
+    if (map.isStyleLoaded()) {
       drawZone(map, a, b, distanceKm);
       addMarkers(map, a, b, displayResults);
-    });
+    } else {
+      map.once('load', () => {
+        drawZone(map, a, b, distanceKm);
+        addMarkers(map, a, b, displayResults);
+      });
+    }
 
     renderResults(displayResults, a, b);
   } catch (err) {
