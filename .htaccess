@@ -1,27 +1,24 @@
-# Block direct access to config file (defence-in-depth — Apache already executes
-# PHP rather than serving source, but explicit denial is safer).
-<Files "config.php">
-    Order allow,deny
-    Deny from all
-</Files>
-
-# Block access to dotfiles (.gitignore, .git/, etc.)
-<FilesMatch "^\.">
-    Order allow,deny
-    Deny from all
-</FilesMatch>
-
-# Block access to the example config
-<Files "config.example.php">
-    Order allow,deny
-    Deny from all
-</Files>
-
-# Block config.js.php — no longer needed
-<Files "config.js.php">
-    Order allow,deny
-    Deny from all
-</Files>
-
 # Disable directory listing
 Options -Indexes
+
+# Block direct HTTP access to server-side config files
+<FilesMatch "^(config\.php|config\.example\.php|config\.js\.php)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Block dotfiles (.gitignore etc.)
+<FilesMatch "^\.">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
