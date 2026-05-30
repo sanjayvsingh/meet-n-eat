@@ -162,7 +162,7 @@ if ($action === 'autocomplete') {
             ],
             [
                 $authHeader,
-                'X-Goog-FieldMask: places.id,places.displayName,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.types,places.formattedAddress,places.location',
+                'X-Goog-FieldMask: places.id,places.displayName,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.types,places.primaryTypeDisplayName,places.formattedAddress,places.location',
             ]
         ),
         true
@@ -189,6 +189,7 @@ if ($action === 'autocomplete') {
                                     ? ['open_now' => $p['currentOpeningHours']['openNow']]
                                     : null,
             'types'             => $p['types'] ?? [],
+            'primary_type'      => $p['primaryTypeDisplayName']['text'] ?? null,
             'vicinity'          => $p['formattedAddress'] ?? '',
             'geometry'          => [
                 'location' => [
@@ -228,6 +229,7 @@ if ($action === 'autocomplete') {
         'midpoint' => findRoutePoint($decoded, $totalMeters, 0.5),
         'p33'      => findRoutePoint($decoded, $totalMeters, 1/3),
         'p67'      => findRoutePoint($decoded, $totalMeters, 2/3),
+        'polyline' => $decoded,
     ]);
 
 } else {

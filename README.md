@@ -96,15 +96,25 @@ meet-n-eat/
 
 1. Geocode both inputs via Google Places Autocomplete → coordinates
 2. Compute straight-line distance D with the Haversine formula
-3. **If D < 100 km:** search at the 25%, 37.5%, 50%, 62.5%, and 75% points along the A→B line in parallel, each with a radius proportional to the corridor width
-4. **If D ≥ 100 km:** fetch the driving route via Google Directions, find the road-distance midpoint, search there with a 15 km radius
+3. **If D < 75 km (short route):**
+   - Search at the 25%, 37.5%, 50%, 62.5%, and 75% points along the A→B straight line in parallel, each with a radius proportional to the corridor width
+   - Filter: keep only restaurants whose projection onto A→B falls between 25% and 75%, and whose perpendicular distance from the line is within the corridor buffer (20% of D, capped at 10 km)
+   - Zone overlay: buffered capsule from the 25% to 75% mark along A→B
+4. **If D ≥ 75 km (long route):**
+   - Fetch the traffic-aware driving route via Google Directions (`departure_time=now`)
+   - Find the 33%, 50%, and 67% waypoints along the driving route
+   - Search at each waypoint sequentially with a 15 km radius (up to 60 results)
+   - No additional filtering — the geographic search already constrains the area
+   - Zone overlay: 15 km-buffered corridor through the three waypoints
+   - Route line drawn on the map showing the actual driving path
+   - If no driveable route exists (cross-ocean etc.), show a friendly message
 5. Deduplicate results by `place_id`
-6. Filter: keep only restaurants whose projection onto the A→B segment falls between 25% and 75%, and whose perpendicular distance from the segment is within the corridor buffer (20% of D, capped at 10 km)
-7. Sort by rating descending
+6. Sort by rating (with review count as tiebreaker), distance from midpoint, or price
 
-## Corridor zone
+## Zone overlay
 
-The shaded zone on the map is a buffered line segment (stadium/capsule shape) drawn with Turf.js, running from the 25% to the 75% mark along A→B. Its width is 2 × corridor buffer (40% of D, capped at 20 km). This shape stays within the bounding box of the two locations and accurately represents the filter boundary.
+- **Short routes:** stadium/capsule shape (Turf.js buffered line) from the 25% to 75% mark along the straight A→B line. Width = 2 × corridor buffer.
+- **Long routes:** 15 km-buffered corridor through the 33%, 50%, and 67% driving-route waypoints, drawn as a sausage shape along the actual road path.
 
 ## Roadmap
 
