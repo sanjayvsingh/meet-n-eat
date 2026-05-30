@@ -1,5 +1,4 @@
 <?php
-// Prevent PHP warnings/notices from corrupting JSON output
 ini_set('display_errors', 0);
 error_reporting(0);
 
@@ -14,80 +13,191 @@ require_once 'config.php';
 
 $action = $_GET['action'] ?? '';
 
-function httpGet($url) {
-    if (function_exists('curl_init')) {
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-        $result = curl_exec($ch);
-        $err    = curl_error($ch);
-        curl_close($ch);
-        if ($result === false) {
-            http_response_code(502);
-            echo json_encode(['error' => 'curl failed: ' . $err]);
-            exit;
+// --- HTTP helpers ---
+
+function httpGet($url, $headers = []) {
+    if (!function_exists('curl_init')) {
+        if (ini_get('allow_url_fopen') && empty($headers)) {
+            return file_get_contents($url);
         }
-        return $result;
+        http_response_code(502);
+        echo json_encode(['error' => 'curl unavailable']);
+        exit;
     }
-    if (ini_get('allow_url_fopen')) {
-        return file_get_contents($url);
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+    if ($headers) curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    $result = curl_exec($ch);
+    $err    = curl_error($ch);
+    curl_close($ch);
+    if ($result === false) {
+        http_response_code(502);
+        echo json_encode(['error' => 'curl failed: ' . $err]);
+        exit;
     }
-    http_response_code(502);
-    echo json_encode(['error' => 'Server cannot make outbound HTTP requests (curl unavailable, allow_url_fopen off)']);
-    exit;
+    return $result;
 }
+
+function httpPost($url, $body, $headers = []) {
+    if (!function_exists('curl_init')) {
+        http_response_code(502);
+        echo json_encode(['error' => 'curl unavailable']);
+        exit;
+    }
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, array_merge(['Content-Type: application/json'], $headers));
+    $result = curl_exec($ch);
+    $err    = curl_error($ch);
+    curl_close($ch);
+    if ($result === false) {
+        http_response_code(502);
+        echo json_encode(['error' => 'curl failed: ' . $err]);
+        exit;
+    }
+    return $result;
+}
+
+$authHeader = 'X-Goog-Api-Key: ' . GOOGLE_API_KEY;
+
+// --- Actions ---
 
 if ($action === 'autocomplete') {
     $input = trim($_GET['input'] ?? '');
     if ($input === '') { echo json_encode(['predictions' => []]); exit; }
 
-    $params = [
-        'input'      => $input,
-        'components' => 'country:ca|country:us',
-        'key'        => GOOGLE_API_KEY,
+    $body = [
+        'input'               => $input,
+        'includedRegionCodes' => ['ca', 'us'],
     ];
     $lat = floatval($_GET['lat'] ?? 0);
     $lng = floatval($_GET['lng'] ?? 0);
     if ($lat !== 0.0 || $lng !== 0.0) {
-        $params['location'] = "$lat,$lng";
-        $params['radius']   = 50000;
+        $body['locationBias'] = [
+            'circle' => [
+                'center' => ['latitude' => $lat, 'longitude' => $lng],
+                'radius' => 50000.0,
+            ],
+        ];
     }
 
-    $url = 'https://maps.googleapis.com/maps/api/place/autocomplete/json?' . http_build_query($params);
-    echo httpGet($url);
+    $data = json_decode(
+        httpPost('https://places.googleapis.com/v1/places:autocomplete', $body, [$authHeader]),
+        true
+    );
+
+    // Normalize to legacy format — app.js expects predictions[].place_id + .description
+    $predictions = [];
+    foreach ($data['suggestions'] ?? [] as $s) {
+        $pp = $s['placePrediction'] ?? null;
+        if (!$pp) continue;
+        $predictions[] = [
+            'place_id'              => $pp['placeId'] ?? '',
+            'description'           => $pp['text']['text'] ?? '',
+            'structured_formatting' => [
+                'main_text'      => $pp['structuredFormat']['mainText']['text'] ?? '',
+                'secondary_text' => $pp['structuredFormat']['secondaryText']['text'] ?? '',
+            ],
+        ];
+    }
+    echo json_encode(['predictions' => $predictions]);
 
 } elseif ($action === 'placedetails') {
     $placeId = trim($_GET['place_id'] ?? '');
     if ($placeId === '') { http_response_code(400); echo json_encode(['error' => 'Missing place_id']); exit; }
 
-    $url = 'https://maps.googleapis.com/maps/api/place/details/json?' . http_build_query([
-        'place_id' => $placeId,
-        'fields'   => 'geometry,name,formatted_address',
-        'key'      => GOOGLE_API_KEY,
+    $p = json_decode(
+        httpGet(
+            'https://places.googleapis.com/v1/places/' . urlencode($placeId),
+            [$authHeader, 'X-Goog-FieldMask: location,displayName,formattedAddress']
+        ),
+        true
+    );
+
+    // Normalize to legacy format — app.js expects result.geometry.location + result.formatted_address
+    echo json_encode([
+        'result' => [
+            'geometry'          => [
+                'location' => [
+                    'lat' => $p['location']['latitude']  ?? 0,
+                    'lng' => $p['location']['longitude'] ?? 0,
+                ],
+            ],
+            'name'              => $p['displayName']['text'] ?? '',
+            'formatted_address' => $p['formattedAddress']   ?? '',
+        ],
     ]);
-    echo httpGet($url);
 
 } elseif ($action === 'places') {
-    $lat = floatval($_GET['lat'] ?? 0);
-    $lng = floatval($_GET['lng'] ?? 0);
+    $lat    = floatval($_GET['lat']    ?? 0);
+    $lng    = floatval($_GET['lng']    ?? 0);
+    $radius = min(max(floatval($_GET['radius'] ?? 5000), 500), 50000);
 
-    // rankby=distance returns the 20 nearest restaurants rather than the 20 most
-    // prominent, so local spots aren't buried under chain brands.
-    $url = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json?' . http_build_query([
-        'location' => "$lat,$lng",
-        'rankby'   => 'distance',
-        'type'     => 'restaurant',
-        'key'      => GOOGLE_API_KEY,
-    ]);
+    $data = json_decode(
+        httpPost(
+            'https://places.googleapis.com/v1/places:searchNearby',
+            [
+                'locationRestriction' => [
+                    'circle' => [
+                        'center' => ['latitude' => $lat, 'longitude' => $lng],
+                        'radius' => $radius,
+                    ],
+                ],
+                'includedTypes'   => ['restaurant'],
+                'rankPreference'  => 'DISTANCE',
+                'maxResultCount'  => 20,
+            ],
+            [
+                $authHeader,
+                'X-Goog-FieldMask: places.id,places.displayName,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.types,places.formattedAddress,places.location',
+            ]
+        ),
+        true
+    );
 
-    echo httpGet($url);
+    $priceMap = [
+        'PRICE_LEVEL_FREE'          => 0,
+        'PRICE_LEVEL_INEXPENSIVE'   => 1,
+        'PRICE_LEVEL_MODERATE'      => 2,
+        'PRICE_LEVEL_EXPENSIVE'     => 3,
+        'PRICE_LEVEL_VERY_EXPENSIVE'=> 4,
+    ];
+
+    // Normalize to legacy field names — app.js uses place_id, name, geometry.location, etc.
+    $results = [];
+    foreach ($data['places'] ?? [] as $p) {
+        $results[] = [
+            'place_id'          => $p['id'] ?? '',
+            'name'              => $p['displayName']['text'] ?? '',
+            'rating'            => $p['rating'] ?? null,
+            'user_ratings_total'=> $p['userRatingCount'] ?? 0,
+            'price_level'       => isset($p['priceLevel']) ? ($priceMap[$p['priceLevel']] ?? null) : null,
+            'opening_hours'     => isset($p['currentOpeningHours']['openNow'])
+                                    ? ['open_now' => $p['currentOpeningHours']['openNow']]
+                                    : null,
+            'types'             => $p['types'] ?? [],
+            'vicinity'          => $p['formattedAddress'] ?? '',
+            'geometry'          => [
+                'location' => [
+                    'lat' => $p['location']['latitude']  ?? 0,
+                    'lng' => $p['location']['longitude'] ?? 0,
+                ],
+            ],
+        ];
+    }
+    echo json_encode(['status' => 'OK', 'results' => $results]);
 
 } elseif ($action === 'route') {
     $oLat = floatval($_GET['originLat'] ?? 0);
     $oLng = floatval($_GET['originLng'] ?? 0);
-    $dLat = floatval($_GET['destLat'] ?? 0);
-    $dLng = floatval($_GET['destLng'] ?? 0);
+    $dLat = floatval($_GET['destLat']   ?? 0);
+    $dLng = floatval($_GET['destLng']   ?? 0);
 
     $url = 'https://maps.googleapis.com/maps/api/directions/json?' . http_build_query([
         'origin'      => "$oLat,$oLng",
@@ -103,10 +213,10 @@ if ($action === 'autocomplete') {
         exit;
     }
 
-    $polyline  = $response['routes'][0]['overview_polyline']['points'];
+    $polyline    = $response['routes'][0]['overview_polyline']['points'];
     $totalMeters = $response['routes'][0]['legs'][0]['distance']['value'];
-    $decoded   = decodePolyline($polyline);
-    $midpoint  = findRouteMidpoint($decoded, $totalMeters);
+    $decoded     = decodePolyline($polyline);
+    $midpoint    = findRouteMidpoint($decoded, $totalMeters);
 
     echo json_encode(['midpoint' => $midpoint]);
 
@@ -115,7 +225,7 @@ if ($action === 'autocomplete') {
     echo json_encode(['error' => 'Invalid action']);
 }
 
-// --- Helpers ---
+// --- Helpers (route midpoint) ---
 
 function decodePolyline($encoded) {
     $points = [];

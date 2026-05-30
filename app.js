@@ -17,6 +17,15 @@ const state = {
 
 // --- Utilities ---
 
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('visible');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('visible'), 2200);
+}
+
 function debounce(fn, delay) {
   let timer;
   return (...args) => {
@@ -111,18 +120,18 @@ function setupLocateButton(btn, inputEl, targetKey) {
       alert('Geolocation is not supported by your browser.');
       return;
     }
-    btn.textContent = '⏳';
+    btn.innerHTML = '<span class="material-icons">hourglass_empty</span>';
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude: lat, longitude: lng } = pos.coords;
         state[targetKey] = { lat, lng, name: 'My location' };
         inputEl.value = 'My location';
-        btn.textContent = '📍';
+        btn.innerHTML = '<span class="material-icons">pin_drop</span>';
         updateControls();
         if (state.a && state.b) runSearch();
       },
       () => {
-        btn.textContent = '📍';
+        btn.innerHTML = '<span class="material-icons">pin_drop</span>';
         alert('Could not get your location. Please type an address instead.');
       }
     );
@@ -170,7 +179,10 @@ function applySort(restaurants) {
   } else if (state.sortBy === 'price') {
     sorted.sort((x, y) => (x.price_level || 99) - (y.price_level || 99));
   } else {
-    sorted.sort((x, y) => (y.rating || 0) - (x.rating || 0));
+    sorted.sort((x, y) => {
+      const rd = (y.rating || 0) - (x.rating || 0);
+      return rd !== 0 ? rd : (y.user_ratings_total || 0) - (x.user_ratings_total || 0);
+    });
   }
   return sorted;
 }
@@ -241,10 +253,7 @@ shareBtn.addEventListener('click', () => {
     bname: state.b.name,
   });
   const url = location.origin + location.pathname + '?' + params;
-  navigator.clipboard.writeText(url).then(() => {
-    shareBtn.textContent = 'Copied!';
-    setTimeout(() => { shareBtn.textContent = 'Copy share link'; }, 2000);
-  });
+  navigator.clipboard.writeText(url).then(() => showToast('Link copied to clipboard'));
 });
 
 // --- Midpoint ---
@@ -276,6 +285,7 @@ async function fetchRestaurants(lat, lng, radiusMeters) {
     radius: Math.round(radiusMeters),
   });
   const res = await fetch('api.php?' + params);
+  if (!res.ok) throw new Error(`places request failed: ${res.status}`);
   const data = await res.json();
   if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
     throw new Error('Places API error: ' + (data.status || 'unknown'));
@@ -301,9 +311,12 @@ async function fetchAllCandidates(a, b, distanceKm) {
     lng: a.lng + t * (b.lng - a.lng),
   }));
 
-  const batches = await Promise.all(
+  const settled = await Promise.allSettled(
     searchPoints.map(p => fetchRestaurants(p.lat, p.lng, radiusMeters))
   );
+  const batches = settled
+    .filter(r => r.status === 'fulfilled')
+    .map(r => r.value);
 
   const seen = new Set();
   return batches.flat().filter(r => {
@@ -340,8 +353,8 @@ function filterByCorridor(restaurants, a, b, distanceKm) {
 
 function initMap(center) {
   if (state.map) {
-    state.map.remove();
-    state.map = null;
+    state.map.jumpTo({ center: [center.lng, center.lat], zoom: 11 });
+    return state.map;
   }
   mapboxgl.accessToken = MAPBOX_TOKEN;
   state.map = new mapboxgl.Map({
@@ -551,10 +564,15 @@ async function runSearch() {
     const displayResults = applySort(applyFilters(filtered));
 
     const map = initMap(midpoint);
-    map.on('load', () => {
+    if (map.isStyleLoaded()) {
       drawZone(map, a, b, distanceKm);
       addMarkers(map, a, b, displayResults);
-    });
+    } else {
+      map.once('load', () => {
+        drawZone(map, a, b, distanceKm);
+        addMarkers(map, a, b, displayResults);
+      });
+    }
 
     renderResults(displayResults, a, b);
   } catch (err) {

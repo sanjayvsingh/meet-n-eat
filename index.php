@@ -9,16 +9,16 @@ $mapboxToken = defined('MAPBOX_TOKEN') ? MAPBOX_TOKEN : '';
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Meet &amp; Eat</title>
+  <title>Meet 'n Eat</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍽️</text></svg>">
-  <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet">
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.24.0/mapbox-gl.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
   <header>
-    <h1>Meet &amp; Eat</h1>
+    <h1>Meet 'n Eat</h1>
     <p>Find a restaurant halfway between you and a friend</p>
   </header>
 
@@ -36,7 +36,7 @@ $mapboxToken = defined('MAPBOX_TOKEN') ? MAPBOX_TOKEN : '';
             autocomplete="off"
             spellcheck="false"
           >
-          <button class="locate-btn" data-target="a" title="Use my current location">📍</button>
+          <button class="locate-btn" data-target="a" title="Use my current location"><span class="material-icons">pin_drop</span></button>
         </div>
         <ul class="autocomplete-list" id="autocomplete-a" role="listbox"></ul>
       </div>
@@ -100,7 +100,9 @@ $mapboxToken = defined('MAPBOX_TOKEN') ? MAPBOX_TOKEN : '';
 
   </main>
 
-  <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.24.0/mapbox-gl.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
   <script>window.MAPBOX_TOKEN = <?php echo json_encode($mapboxToken); ?>;</script>
   <script src="app.js"></script>

@@ -1,4 +1,4 @@
-# Meet & Eat
+# Meet 'n Eat
 
 Find a restaurant roughly halfway between two people's locations.
 
@@ -26,8 +26,8 @@ Enter two addresses — yours and a friend's — and the app finds restaurants i
 |-------|-----------|
 | Frontend | Vanilla HTML / CSS / JS |
 | Map | Mapbox GL JS (CDN) |
-| Geocoding / autocomplete | Google Places Autocomplete API |
-| Restaurant data | Google Places Nearby Search API |
+| Geocoding / autocomplete | Google Places API (New) — Autocomplete |
+| Restaurant data | Google Places API (New) — Nearby Search |
 | Route midpoint (>100 km) | Google Directions API |
 | Backend proxy | PHP (single `api.php` file) |
 
@@ -39,15 +39,15 @@ All Google API calls are proxied through `api.php` so the key never reaches the 
 
 - A web host running PHP 7.4+ with `curl` enabled (any standard Apache/cPanel host works)
 - A [Google Maps Platform](https://developers.google.com/maps) API key with these APIs enabled:
-  - Places API
+  - Places API (New)
   - Directions API
 - A [Mapbox](https://mapbox.com) account and public access token
 
 ### Google API key hardening (do before going live)
 
-1. **Set a daily quota limit** — Google Cloud Console → APIs & Services → Quotas → cap "Places API – Nearby Search requests per day" to something safe (e.g. 200–500 for personal use)
+1. **Set a daily quota limit** — Google Cloud Console → APIs & Services → Quotas → cap "Places API (New) – Nearby Search requests per day" to something safe (e.g. 100–200 for personal use)
 2. **Set a budget alert** — Billing → Budgets & alerts → create a $5 budget with email alerts at 50% and 100%
-3. **Restrict the key** — Credentials → edit key → restrict to Places API and Directions API only; add your domain as an HTTP referrer
+3. **Restrict the key** — Credentials → edit key → restrict to Places API (New) and Directions API only; restrict by server IP address (not HTTP referrer, since calls are made server-side via PHP/curl)
 
 ### Local development
 
