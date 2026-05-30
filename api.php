@@ -33,8 +33,9 @@ function httpGet($url, $headers = []) {
     $err    = curl_error($ch);
     curl_close($ch);
     if ($result === false) {
+        error_log('meet-n-eat httpGet error: ' . $err);
         http_response_code(502);
-        echo json_encode(['error' => 'curl failed: ' . $err]);
+        echo json_encode(['error' => 'Service temporarily unavailable']);
         exit;
     }
     return $result;
@@ -43,7 +44,7 @@ function httpGet($url, $headers = []) {
 function httpPost($url, $body, $headers = []) {
     if (!function_exists('curl_init')) {
         http_response_code(502);
-        echo json_encode(['error' => 'curl unavailable']);
+        echo json_encode(['error' => 'Service temporarily unavailable']);
         exit;
     }
     $ch = curl_init($url);
@@ -57,8 +58,9 @@ function httpPost($url, $body, $headers = []) {
     $err    = curl_error($ch);
     curl_close($ch);
     if ($result === false) {
+        error_log('meet-n-eat httpPost error: ' . $err);
         http_response_code(502);
-        echo json_encode(['error' => 'curl failed: ' . $err]);
+        echo json_encode(['error' => 'Service temporarily unavailable']);
         exit;
     }
     return $result;
@@ -70,7 +72,7 @@ $authHeader = 'X-Goog-Api-Key: ' . GOOGLE_API_KEY;
 
 if ($action === 'autocomplete') {
     $input = trim($_GET['input'] ?? '');
-    if ($input === '') { echo json_encode(['predictions' => []]); exit; }
+    if ($input === '' || strlen($input) > 200) { echo json_encode(['predictions' => []]); exit; }
 
     $body = [
         'input'               => $input,
@@ -138,6 +140,11 @@ if ($action === 'autocomplete') {
     $lat    = floatval($_GET['lat']    ?? 0);
     $lng    = floatval($_GET['lng']    ?? 0);
     $radius = min(max(floatval($_GET['radius'] ?? 5000), 500), 50000);
+    if ($lat < -90 || $lat > 90 || $lng < -180 || $lng > 180) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid coordinates']);
+        exit;
+    }
 
     $data = json_decode(
         httpPost(

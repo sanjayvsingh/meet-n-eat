@@ -8,6 +8,7 @@ const state = {
   b: null,
   map: null,
   markers: [],
+  markerElements: [],
   allResults: [],  // full unfiltered result set, preserved for filter re-runs
   activeFilters: new Set(),
   sortBy: 'rating',
@@ -45,13 +46,13 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 
 // --- Geocoding (Google Places Autocomplete via PHP proxy) ---
 
-async function autocompleteSuggest(query, proximity) {
+async function autocompleteSuggest(query, proximity, signal) {
   const params = new URLSearchParams({ action: 'autocomplete', input: query });
   if (proximity) {
     params.set('lat', proximity.lat);
     params.set('lng', proximity.lng);
   }
-  const res = await fetch('api.php?' + params);
+  const res = await fetch('api.php?' + params, { signal });
   const data = await res.json();
   return data.predictions || [];
 }
@@ -70,11 +71,14 @@ async function fetchPlaceDetails(placeId) {
 
 function setupInput(inputEl, listEl, targetKey) {
   const otherKey = targetKey === 'a' ? 'b' : 'a';
+  let autocompleteController = null;
 
   const debouncedSearch = debounce(async (query) => {
     if (query.length < 2) { listEl.innerHTML = ''; return; }
+    autocompleteController?.abort();
+    autocompleteController = new AbortController();
     try {
-      const predictions = await autocompleteSuggest(query, state[otherKey]);
+      const predictions = await autocompleteSuggest(query, state[otherKey], autocompleteController.signal);
       listEl.innerHTML = '';
       predictions.forEach(p => {
         const li = document.createElement('li');
@@ -98,10 +102,10 @@ function setupInput(inputEl, listEl, targetKey) {
         });
         listEl.appendChild(li);
       });
-    } catch {
-      listEl.innerHTML = '';
+    } catch (err) {
+      if (err.name !== 'AbortError') listEl.innerHTML = '';
     }
-  }, 300);
+  }, 200);
 
   inputEl.addEventListener('input', () => {
     state[targetKey] = null;
@@ -171,11 +175,7 @@ function applyFilters(restaurants) {
 function applySort(restaurants) {
   const sorted = [...restaurants];
   if (state.sortBy === 'distance' && state.midpoint) {
-    sorted.sort((x, y) => {
-      const dX = haversineKm(state.midpoint.lat, state.midpoint.lng, x.geometry.location.lat, x.geometry.location.lng);
-      const dY = haversineKm(state.midpoint.lat, state.midpoint.lng, y.geometry.location.lat, y.geometry.location.lng);
-      return dX - dY;
-    });
+    sorted.sort((x, y) => (x._dMidpoint || 0) - (y._dMidpoint || 0));
   } else if (state.sortBy === 'price') {
     sorted.sort((x, y) => (x.price_level || 99) - (y.price_level || 99));
   } else {
@@ -314,6 +314,8 @@ async function fetchAllCandidates(a, b, distanceKm) {
   const settled = await Promise.allSettled(
     searchPoints.map(p => fetchRestaurants(p.lat, p.lng, radiusMeters))
   );
+  const failed = settled.filter(r => r.status === 'rejected').length;
+  if (failed >= 3) showToast('Some search areas failed — results may be incomplete.');
   const batches = settled
     .filter(r => r.status === 'fulfilled')
     .map(r => r.value);
@@ -410,6 +412,7 @@ function placeMarker(map, lat, lng, className, title) {
 function addMarkers(map, a, b, restaurants) {
   state.markers.forEach(m => m.remove());
   state.markers = [];
+  state.markerElements = [];
 
   placeMarker(map, a.lat, a.lng, 'marker-a', 'You: ' + a.name);
   placeMarker(map, b.lat, b.lng, 'marker-b', 'Friend: ' + b.name);
@@ -424,6 +427,7 @@ function addMarkers(map, a, b, restaurants) {
     );
     el.dataset.index = i;
     el.addEventListener('click', () => highlightResult(i));
+    state.markerElements.push(el);
   });
 
   const bounds = new mapboxgl.LngLatBounds();
@@ -455,16 +459,14 @@ function renderResults(restaurants, a, b) {
 
   list.innerHTML = '';
   restaurants.forEach((r, i) => {
-    const rLat = r.geometry.location.lat;
-    const rLng = r.geometry.location.lng;
-    const dA = haversineKm(a.lat, a.lng, rLat, rLng).toFixed(1);
-    const dB = haversineKm(b.lat, b.lng, rLat, rLng).toFixed(1);
+    const dA = (r._dA ?? haversineKm(a.lat, a.lng, r.geometry.location.lat, r.geometry.location.lng)).toFixed(1);
+    const dB = (r._dB ?? haversineKm(b.lat, b.lng, r.geometry.location.lat, r.geometry.location.lng)).toFixed(1);
 
     const rating = r.rating ? `★${r.rating} (${r.user_ratings_total.toLocaleString()})` : 'No rating';
     const price = r.price_level ? '$'.repeat(r.price_level) : '';
     const isOpen = r.opening_hours?.open_now;
     const cuisine = formatCuisine(r.types);
-    const mapsUrl = `https://www.google.com/maps/place/?q=place_id:${r.place_id}`;
+    const mapsUrl = `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(r.place_id)}`;
 
     const card = document.createElement('div');
     card.className = 'restaurant-card';
@@ -500,20 +502,20 @@ function renderResults(restaurants, a, b) {
 }
 
 function hoverResult(index) {
-  document.querySelectorAll('.marker-restaurant').forEach(el => {
+  state.markerElements.forEach(el => {
     el.classList.toggle('hover', parseInt(el.dataset.index) === index);
   });
 }
 
 function unhoverResult() {
-  document.querySelectorAll('.marker-restaurant').forEach(el => el.classList.remove('hover'));
+  state.markerElements.forEach(el => el.classList.remove('hover'));
 }
 
 function highlightResult(index) {
   document.querySelectorAll('.restaurant-card').forEach((c, i) => {
     c.classList.toggle('highlighted', i === index);
   });
-  document.querySelectorAll('.marker-restaurant').forEach(el => {
+  state.markerElements.forEach(el => {
     el.classList.toggle('active', parseInt(el.dataset.index) === index);
   });
   document.querySelector(`.restaurant-card[data-index="${index}"]`)
@@ -545,25 +547,36 @@ async function runSearch() {
     const midpoint = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 };
     state.midpoint = midpoint;
 
+    // Show loading state immediately — user sees feedback during API calls
+    document.getElementById('map-section').hidden = false;
+    document.getElementById('results-section').hidden = false;
+    document.getElementById('results-header').textContent = 'Searching…';
+    document.getElementById('results-list').innerHTML = '<div class="search-loading">Finding restaurants in the middle…</div>';
+    const map = initMap(midpoint);
+
     let raw;
     if (distanceKm < 100) {
       raw = await fetchAllCandidates(a, b, distanceKm);
     } else {
       const routeMid = await getMidpoint(a, b, distanceKm);
+      state.midpoint = routeMid;
       raw = await fetchRestaurants(routeMid.lat, routeMid.lng, 15000);
     }
 
     const filtered = filterByCorridor(raw, a, b, distanceKm);
-
-    // Cache full results so filters/sort can re-run without re-fetching
     state.allResults = filtered;
 
-    document.getElementById('map-section').hidden = false;
-    document.getElementById('results-section').hidden = false;
+    // Pre-compute distances so sort and render don't repeat haversine calls
+    filtered.forEach(r => {
+      const rLat = r.geometry.location.lat;
+      const rLng = r.geometry.location.lng;
+      r._dA        = haversineKm(a.lat, a.lng, rLat, rLng);
+      r._dB        = haversineKm(b.lat, b.lng, rLat, rLng);
+      r._dMidpoint = haversineKm(state.midpoint.lat, state.midpoint.lng, rLat, rLng);
+    });
 
     const displayResults = applySort(applyFilters(filtered));
 
-    const map = initMap(midpoint);
     if (map.isStyleLoaded()) {
       drawZone(map, a, b, distanceKm);
       addMarkers(map, a, b, displayResults);
@@ -621,8 +634,8 @@ async function init() {
   // Restore from share link
   const p = new URLSearchParams(location.search);
   if (p.get('alat') && p.get('alng') && p.get('blat') && p.get('blng')) {
-    state.a = { lat: +p.get('alat'), lng: +p.get('alng'), name: p.get('aname') || 'Location A' };
-    state.b = { lat: +p.get('blat'), lng: +p.get('blng'), name: p.get('bname') || 'Location B' };
+    state.a = { lat: +p.get('alat'), lng: +p.get('alng'), name: escapeHtml(p.get('aname') || 'Location A') };
+    state.b = { lat: +p.get('blat'), lng: +p.get('blng'), name: escapeHtml(p.get('bname') || 'Location B') };
     document.getElementById('location-a').value = state.a.name;
     document.getElementById('location-b').value = state.b.name;
     updateControls();
