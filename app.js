@@ -534,9 +534,9 @@ searchBtn.addEventListener('click', runSearch);
 // --- Startup ---
 
 async function init() {
-  if (!MAPBOX_TOKEN) {
+  if (!MAPBOX_TOKEN || !MAPBOX_TOKEN.startsWith('pk.')) {
     document.querySelector('main').innerHTML =
-      '<p style="padding:2rem;color:#dc2626">Configuration error: config.js.php is missing or did not load. Upload it to the server alongside the other files.</p>';
+      '<p style="padding:2rem;color:#dc2626">Configuration error: Mapbox token is missing or invalid. Check config.js.php loaded correctly and that MAPBOX_TOKEN in config.php starts with pk.</p>';
     return;
   }
 
