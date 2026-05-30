@@ -4,10 +4,12 @@ let MAPBOX_TOKEN = '';
 // --- State ---
 
 const state = {
-  a: null,      // { lat, lng, name }
+  a: null,         // { lat, lng, name }
   b: null,
   map: null,
   markers: [],
+  allResults: [],  // full unfiltered result set, preserved for filter re-runs
+  activeFilters: new Set(),
 };
 
 // --- Utilities ---
@@ -128,6 +130,74 @@ function updateControls() {
   const ready = !!(state.a && state.b);
   searchBtn.disabled = !ready;
   shareBtn.hidden = !ready;
+}
+
+// --- Filters ---
+
+function applyFilters(restaurants) {
+  const f = state.activeFilters;
+  return restaurants.filter(r => {
+    // Open now
+    if (f.has('open') && r.opening_hours?.open_now === false) return false;
+
+    // Rating (only one rating filter can be active at a time)
+    if (f.has('rating-45') && (r.rating == null || r.rating < 4.5)) return false;
+    else if (f.has('rating-40') && (r.rating == null || r.rating < 4.0)) return false;
+    else if (f.has('rating-35') && (r.rating == null || r.rating < 3.5)) return false;
+
+    // Price — pass if no price filters active, or restaurant matches any selected level,
+    // or restaurant has no price data
+    const priceFilters = ['price-1', 'price-2', 'price-3', 'price-4'].filter(p => f.has(p));
+    if (priceFilters.length > 0 && r.price_level != null) {
+      if (!f.has(`price-${r.price_level}`)) return false;
+    }
+
+    return true;
+  });
+}
+
+function refreshResults() {
+  const visible = applyFilters(state.allResults);
+  renderResults(visible, state.a, state.b);
+  if (state.map) {
+    if (state.map.isStyleLoaded()) {
+      addMarkers(state.map, state.a, state.b, visible);
+    }
+  }
+}
+
+function setupFilters() {
+  const ratingGroup = ['rating-35', 'rating-40', 'rating-45'];
+
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.filter;
+
+      if (ratingGroup.includes(key)) {
+        // Rating filters are mutually exclusive — clicking the active one deselects it
+        const alreadyActive = state.activeFilters.has(key);
+        ratingGroup.forEach(k => {
+          state.activeFilters.delete(k);
+          document.querySelector(`[data-filter="${k}"]`).classList.remove('active');
+        });
+        if (!alreadyActive) {
+          state.activeFilters.add(key);
+          btn.classList.add('active');
+        }
+      } else {
+        // All other filters toggle independently
+        if (state.activeFilters.has(key)) {
+          state.activeFilters.delete(key);
+          btn.classList.remove('active');
+        } else {
+          state.activeFilters.add(key);
+          btn.classList.add('active');
+        }
+      }
+
+      refreshResults();
+    });
+  });
 }
 
 // --- Share link ---
@@ -338,9 +408,11 @@ function renderResults(restaurants, a, b) {
   const list = document.getElementById('results-list');
 
   const n = restaurants.length;
+  const total = state.allResults.length;
+  const filtered = total > 0 && n < total;
   header.textContent = n === 0
-    ? 'No restaurants found in the corridor. Try locations farther apart.'
-    : `${n} restaurant${n !== 1 ? 's' : ''} found`;
+    ? (total > 0 ? 'No restaurants match the current filters.' : 'No restaurants found in the corridor. Try locations farther apart.')
+    : `${n}${filtered ? ` of ${total}` : ''} restaurant${n !== 1 ? 's' : ''} found`;
 
   list.innerHTML = '';
   restaurants.forEach((r, i) => {
@@ -431,16 +503,19 @@ async function runSearch() {
     const filtered = filterByCorridor(raw, a, b, distanceKm);
     filtered.sort((x, y) => (y.rating || 0) - (x.rating || 0));
 
+    // Cache full results so filters can re-run without re-fetching
+    state.allResults = filtered;
+
     document.getElementById('map-section').hidden = false;
     document.getElementById('results-section').hidden = false;
 
     const map = initMap(midpoint);
     map.on('load', () => {
       drawZone(map, a, b, distanceKm);
-      addMarkers(map, a, b, filtered);
+      addMarkers(map, a, b, applyFilters(filtered));
     });
 
-    renderResults(filtered, a, b);
+    renderResults(applyFilters(filtered), a, b);
 
     if (filtered.length > 0) {
       document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
@@ -463,6 +538,8 @@ async function init() {
   const cfg = await res.json();
   MAPBOX_TOKEN = cfg.mapboxToken;
 
+  setupFilters();
+
   setupInput(
     document.getElementById('location-a'),
     document.getElementById('autocomplete-a'),
@@ -477,11 +554,6 @@ async function init() {
     document.querySelector('.locate-btn[data-target="a"]'),
     document.getElementById('location-a'),
     'a'
-  );
-  setupLocateButton(
-    document.querySelector('.locate-btn[data-target="b"]'),
-    document.getElementById('location-b'),
-    'b'
   );
 
   // Restore from share link

@@ -1,0 +1,21 @@
+# Block direct access to config file (defence-in-depth — Apache already executes
+# PHP rather than serving source, but explicit denial is safer).
+<Files "config.php">
+    Order allow,deny
+    Deny from all
+</Files>
+
+# Block access to dotfiles (.gitignore, .git/, etc.)
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Block access to the example config
+<Files "config.example.php">
+    Order allow,deny
+    Deny from all
+</Files>
+
+# Disable directory listing
+Options -Indexes

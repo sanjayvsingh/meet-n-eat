@@ -44,7 +44,6 @@
             autocomplete="off"
             spellcheck="false"
           >
-          <button class="locate-btn" data-target="b" title="Use friend's location">📍</button>
         </div>
         <ul class="autocomplete-list" id="autocomplete-b" role="listbox"></ul>
       </div>
@@ -63,7 +62,21 @@
     </section>
 
     <section class="results-section" id="results-section" hidden>
-      <div id="results-header"></div>
+      <div class="results-bar">
+        <div id="results-header"></div>
+        <div class="filters" id="filters">
+          <button class="filter-btn" id="filter-open" data-filter="open">Open now</button>
+          <span class="filter-divider"></span>
+          <button class="filter-btn" id="filter-rating-35" data-filter="rating-35">3.5★+</button>
+          <button class="filter-btn" id="filter-rating-40" data-filter="rating-40">4.0★+</button>
+          <button class="filter-btn" id="filter-rating-45" data-filter="rating-45">4.5★+</button>
+          <span class="filter-divider"></span>
+          <button class="filter-btn" id="filter-price-1" data-filter="price-1">$</button>
+          <button class="filter-btn" id="filter-price-2" data-filter="price-2">$$</button>
+          <button class="filter-btn" id="filter-price-3" data-filter="price-3">$$$</button>
+          <button class="filter-btn" id="filter-price-4" data-filter="price-4">$$$$</button>
+        </div>
+      </div>
       <div id="results-list"></div>
     </section>
 
