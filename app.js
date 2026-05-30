@@ -115,26 +115,33 @@ function setupInput(inputEl, listEl, targetKey) {
 
   inputEl.addEventListener('keydown', (e) => {
     const items = listEl.querySelectorAll('li');
-    if (!items.length) return;
     const current = listEl.querySelector('li[aria-selected="true"]');
     const idx = current ? [...items].indexOf(current) : -1;
 
     if (e.key === 'ArrowDown') {
+      if (!items.length) return;
       e.preventDefault();
       const next = items[Math.min(idx + 1, items.length - 1)];
       if (current) current.removeAttribute('aria-selected');
       next.setAttribute('aria-selected', 'true');
       next.scrollIntoView({ block: 'nearest' });
     } else if (e.key === 'ArrowUp') {
+      if (!items.length) return;
       e.preventDefault();
       if (idx <= 0) return;
       const prev = items[idx - 1];
       current.removeAttribute('aria-selected');
       prev.setAttribute('aria-selected', 'true');
       prev.scrollIntoView({ block: 'nearest' });
-    } else if (e.key === 'Enter' && current) {
-      e.preventDefault();
-      current.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    } else if (e.key === 'Enter') {
+      const target = current || items[0];
+      if (target) {
+        e.preventDefault();
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      }
+    } else if (e.key === 'Tab') {
+      const target = current || items[0];
+      if (target) target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     } else if (e.key === 'Escape') {
       listEl.innerHTML = '';
     }
