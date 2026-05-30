@@ -79,8 +79,8 @@ function setupInput(inputEl, listEl, targetKey) {
             inputEl.value = place.name;
             updateControls();
             if (state.a && state.b) runSearch();
-          } catch {
-            inputEl.value = '';
+          } catch (err) {
+            console.error('fetchPlaceDetails failed:', err);
           } finally {
             inputEl.disabled = false;
           }
