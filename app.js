@@ -170,7 +170,10 @@ function applySort(restaurants) {
   } else if (state.sortBy === 'price') {
     sorted.sort((x, y) => (x.price_level || 99) - (y.price_level || 99));
   } else {
-    sorted.sort((x, y) => (y.rating || 0) - (x.rating || 0));
+    sorted.sort((x, y) => {
+      const rd = (y.rating || 0) - (x.rating || 0);
+      return rd !== 0 ? rd : (y.user_ratings_total || 0) - (x.user_ratings_total || 0);
+    });
   }
   return sorted;
 }
