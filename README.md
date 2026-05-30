@@ -12,9 +12,13 @@ Enter two addresses — yours and a friend's — and the app finds restaurants i
 - 📍 button to use device geolocation
 - Auto-searches as soon as both locations are selected
 - Map with a shaded corridor zone and colour-coded pins for each person and each restaurant
+- Side-by-side layout on wide screens — map stays sticky while results scroll
 - Restaurant cards showing cuisine type, rating, price level, open/closed status, and distance from each person
+- Hovering a card highlights the corresponding map marker
+- Sort results by rating, distance from midpoint, or price
+- Filter by open now, minimum rating (3.5★ / 4.0★ / 4.5★), and price level ($–$$$$)
 - Share button that copies a URL — opening it auto-populates both fields and runs the search
-- Responsive layout (desktop one-row, mobile stacked)
+- Responsive layout (desktop side-by-side, mobile stacked)
 
 ## Stack
 
@@ -78,10 +82,11 @@ A template is provided in `config.example.php`.
 
 ```
 meet-n-eat/
-├── index.html        # Single-page app shell
+├── index.php         # Single-page app shell (injects Mapbox token server-side)
 ├── style.css         # All styles (responsive)
 ├── app.js            # All client-side logic
-├── api.php           # Server-side proxy for Google APIs + config endpoint
+├── api.php           # Server-side proxy for Google APIs
+├── .htaccess         # Sets index.php as directory index; blocks config files
 ├── config.php        # API keys — never committed (gitignored)
 ├── config.example.php
 └── .gitignore
@@ -103,7 +108,6 @@ The shaded zone on the map is a buffered line segment (stadium/capsule shape) dr
 
 ## Roadmap
 
-- Cuisine, rating, and "open now" filters
 - Pagination to surface more results in dense areas
 - Walking / transit travel time estimates
 - Dark mode
