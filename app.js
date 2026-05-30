@@ -285,10 +285,7 @@ shareBtn.addEventListener('click', () => {
 
 // --- Midpoint ---
 
-async function getMidpoint(a, b, distanceKm) {
-  if (distanceKm < 100) {
-    return { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 };
-  }
+async function getRouteData(a, b) {
   const params = new URLSearchParams({
     action: 'route',
     originLat: a.lat,
@@ -303,7 +300,7 @@ async function getMidpoint(a, b, distanceKm) {
     err.noRoute = true;
     throw err;
   }
-  return data.midpoint;
+  return data; // { midpoint, p33, p67 }
 }
 
 // --- Restaurant fetch & filter ---
@@ -587,18 +584,37 @@ async function runSearch() {
     const longRoute = distanceKm >= 75;
     const [minT, maxT] = longRoute ? [1/3, 2/3] : [0.25, 0.75];
 
-    let raw;
+    let raw, zoneGeoJSON;
     if (!longRoute) {
       raw = await fetchAllCandidates(a, b, distanceKm);
+      zoneGeoJSON = corridorGeoJSON(a, b, distanceKm, minT, maxT);
     } else {
-      const routeMid = await getMidpoint(a, b, distanceKm);
-      state.midpoint = routeMid;
-      raw = await fetchRestaurants(routeMid.lat, routeMid.lng, 15000);
+      const routeData = await getRouteData(a, b);
+      state.midpoint = routeData.midpoint;
+
+      // Search at 33%, 50%, and 67% of the driving route for broader coverage
+      const routePoints = [routeData.p33, routeData.midpoint, routeData.p67];
+      const settled = await Promise.allSettled(
+        routePoints.map(p => fetchRestaurants(p.lat, p.lng, 15000))
+      );
+      if (settled.filter(r => r.status === 'rejected').length >= 2)
+        showToast('Some search areas failed — results may be incomplete.');
+      const seen = new Set();
+      raw = settled
+        .filter(r => r.status === 'fulfilled')
+        .flatMap(r => r.value)
+        .filter(r => { if (seen.has(r.place_id)) return false; seen.add(r.place_id); return true; });
+
+      zoneGeoJSON = turf.buffer(
+        turf.lineString([
+          [routeData.p33.lng, routeData.p33.lat],
+          [routeData.midpoint.lng, routeData.midpoint.lat],
+          [routeData.p67.lng, routeData.p67.lat],
+        ]),
+        15, { units: 'kilometers', steps: 16 }
+      );
     }
 
-    // For long routes the route-midpoint search already constrains the area;
-    // applying the straight-line corridor filter would reject everything if the
-    // road detours significantly (e.g. around Lake Erie).
     const filtered = longRoute
       ? raw
       : filterByCorridor(raw, a, b, distanceKm, minT, maxT);
@@ -614,11 +630,6 @@ async function runSearch() {
     });
 
     const displayResults = applySort(applyFilters(filtered));
-
-    // Zone: circle around route midpoint for long routes, corridor band for short
-    const zoneGeoJSON = longRoute
-      ? turf.circle([state.midpoint.lng, state.midpoint.lat], 15, { units: 'kilometers', steps: 32 })
-      : corridorGeoJSON(a, b, distanceKm, minT, maxT);
 
     if (map.isStyleLoaded()) {
       drawZone(map, zoneGeoJSON);
