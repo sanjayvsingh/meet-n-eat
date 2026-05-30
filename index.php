@@ -1,9 +1,16 @@
+<?php
+ini_set('display_errors', 0);
+error_reporting(0);
+if (file_exists(__DIR__ . '/config.php')) require_once __DIR__ . '/config.php';
+$mapboxToken = defined('MAPBOX_TOKEN') ? MAPBOX_TOKEN : '';
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Meet &amp; Eat</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍽️</text></svg>">
   <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
@@ -44,7 +51,6 @@
             autocomplete="off"
             spellcheck="false"
           >
-          <button class="locate-btn" data-target="b" title="Use friend's location">📍</button>
         </div>
         <ul class="autocomplete-list" id="autocomplete-b" role="listbox"></ul>
       </div>
@@ -58,19 +64,45 @@
 
     </section>
 
+    <div class="content-area">
+
     <section class="map-section" id="map-section" hidden>
       <div id="map"></div>
     </section>
 
     <section class="results-section" id="results-section" hidden>
-      <div id="results-header"></div>
+      <div class="results-bar">
+        <div class="results-bar-left">
+          <div id="results-header"></div>
+          <select id="sort-select" class="sort-select">
+            <option value="rating">Rating (best first)</option>
+            <option value="distance">Distance from midpoint</option>
+            <option value="price">Price (low to high)</option>
+          </select>
+        </div>
+        <div class="filters" id="filters">
+          <button class="filter-btn" id="filter-open" data-filter="open">Open now</button>
+          <span class="filter-divider"></span>
+          <button class="filter-btn" id="filter-rating-35" data-filter="rating-35">3.5★+</button>
+          <button class="filter-btn" id="filter-rating-40" data-filter="rating-40">4.0★+</button>
+          <button class="filter-btn" id="filter-rating-45" data-filter="rating-45">4.5★+</button>
+          <span class="filter-divider"></span>
+          <button class="filter-btn" id="filter-price-1" data-filter="price-1">$</button>
+          <button class="filter-btn" id="filter-price-2" data-filter="price-2">$$</button>
+          <button class="filter-btn" id="filter-price-3" data-filter="price-3">$$$</button>
+          <button class="filter-btn" id="filter-price-4" data-filter="price-4">$$$$</button>
+        </div>
+      </div>
       <div id="results-list"></div>
     </section>
+
+    </div><!-- .content-area -->
 
   </main>
 
   <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+  <script>window.MAPBOX_TOKEN = <?php echo json_encode($mapboxToken); ?>;</script>
   <script src="app.js"></script>
 
 </body>

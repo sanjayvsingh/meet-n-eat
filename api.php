@@ -1,6 +1,15 @@
 <?php
+// Prevent PHP warnings/notices from corrupting JSON output
+ini_set('display_errors', 0);
+error_reporting(0);
+
 header('Content-Type: application/json');
 
+if (!file_exists(__DIR__ . '/config.php')) {
+    http_response_code(500);
+    echo json_encode(['error' => 'config.php not found on server']);
+    exit;
+}
 require_once 'config.php';
 
 $action = $_GET['action'] ?? '';
@@ -12,16 +21,24 @@ function httpGet($url) {
         curl_setopt($ch, CURLOPT_TIMEOUT, 10);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
         $result = curl_exec($ch);
+        $err    = curl_error($ch);
         curl_close($ch);
+        if ($result === false) {
+            http_response_code(502);
+            echo json_encode(['error' => 'curl failed: ' . $err]);
+            exit;
+        }
         return $result;
     }
-    return file_get_contents($url);
+    if (ini_get('allow_url_fopen')) {
+        return file_get_contents($url);
+    }
+    http_response_code(502);
+    echo json_encode(['error' => 'Server cannot make outbound HTTP requests (curl unavailable, allow_url_fopen off)']);
+    exit;
 }
 
-if ($action === 'config') {
-    echo json_encode(['mapboxToken' => MAPBOX_TOKEN]);
-
-} elseif ($action === 'autocomplete') {
+if ($action === 'autocomplete') {
     $input = trim($_GET['input'] ?? '');
     if ($input === '') { echo json_encode(['predictions' => []]); exit; }
 

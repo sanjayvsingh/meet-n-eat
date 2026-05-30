@@ -1,13 +1,18 @@
-// Mapbox token is loaded from config.php via api.php?action=config on startup
-let MAPBOX_TOKEN = '';
+// Mapbox token is injected by config.js.php at page load as window.MAPBOX_TOKEN
+let MAPBOX_TOKEN = window.MAPBOX_TOKEN || '';
 
 // --- State ---
 
 const state = {
-  a: null,      // { lat, lng, name }
+  a: null,         // { lat, lng, name }
   b: null,
   map: null,
   markers: [],
+  allResults: [],  // full unfiltered result set, preserved for filter re-runs
+  activeFilters: new Set(),
+  sortBy: 'rating',
+  midpoint: null,
+  searching: false,
 };
 
 // --- Utilities ---
@@ -76,8 +81,8 @@ function setupInput(inputEl, listEl, targetKey) {
             inputEl.value = place.name;
             updateControls();
             if (state.a && state.b) runSearch();
-          } catch {
-            inputEl.value = '';
+          } catch (err) {
+            console.error('fetchPlaceDetails failed:', err);
           } finally {
             inputEl.disabled = false;
           }
@@ -128,6 +133,97 @@ function updateControls() {
   const ready = !!(state.a && state.b);
   searchBtn.disabled = !ready;
   shareBtn.hidden = !ready;
+}
+
+// --- Filters ---
+
+function applyFilters(restaurants) {
+  const f = state.activeFilters;
+  return restaurants.filter(r => {
+    // Open now
+    if (f.has('open') && r.opening_hours?.open_now === false) return false;
+
+    // Rating (only one rating filter can be active at a time)
+    if (f.has('rating-45') && (r.rating == null || r.rating < 4.5)) return false;
+    else if (f.has('rating-40') && (r.rating == null || r.rating < 4.0)) return false;
+    else if (f.has('rating-35') && (r.rating == null || r.rating < 3.5)) return false;
+
+    // Price — pass if no price filters active, or restaurant matches any selected level,
+    // or restaurant has no price data
+    const priceFilters = ['price-1', 'price-2', 'price-3', 'price-4'].filter(p => f.has(p));
+    if (priceFilters.length > 0 && r.price_level != null) {
+      if (!f.has(`price-${r.price_level}`)) return false;
+    }
+
+    return true;
+  });
+}
+
+function applySort(restaurants) {
+  const sorted = [...restaurants];
+  if (state.sortBy === 'distance' && state.midpoint) {
+    sorted.sort((x, y) => {
+      const dX = haversineKm(state.midpoint.lat, state.midpoint.lng, x.geometry.location.lat, x.geometry.location.lng);
+      const dY = haversineKm(state.midpoint.lat, state.midpoint.lng, y.geometry.location.lat, y.geometry.location.lng);
+      return dX - dY;
+    });
+  } else if (state.sortBy === 'price') {
+    sorted.sort((x, y) => (x.price_level || 99) - (y.price_level || 99));
+  } else {
+    sorted.sort((x, y) => (y.rating || 0) - (x.rating || 0));
+  }
+  return sorted;
+}
+
+function refreshResults() {
+  const visible = applySort(applyFilters(state.allResults));
+  renderResults(visible, state.a, state.b);
+  if (state.map) {
+    if (state.map.isStyleLoaded()) {
+      addMarkers(state.map, state.a, state.b, visible);
+    }
+  }
+}
+
+function setupSort() {
+  document.getElementById('sort-select').addEventListener('change', (e) => {
+    state.sortBy = e.target.value;
+    refreshResults();
+  });
+}
+
+function setupFilters() {
+  const ratingGroup = ['rating-35', 'rating-40', 'rating-45'];
+
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.filter;
+
+      if (ratingGroup.includes(key)) {
+        // Rating filters are mutually exclusive — clicking the active one deselects it
+        const alreadyActive = state.activeFilters.has(key);
+        ratingGroup.forEach(k => {
+          state.activeFilters.delete(k);
+          document.querySelector(`[data-filter="${k}"]`).classList.remove('active');
+        });
+        if (!alreadyActive) {
+          state.activeFilters.add(key);
+          btn.classList.add('active');
+        }
+      } else {
+        // All other filters toggle independently
+        if (state.activeFilters.has(key)) {
+          state.activeFilters.delete(key);
+          btn.classList.remove('active');
+        } else {
+          state.activeFilters.add(key);
+          btn.classList.add('active');
+        }
+      }
+
+      refreshResults();
+    });
+  });
 }
 
 // --- Share link ---
@@ -338,9 +434,11 @@ function renderResults(restaurants, a, b) {
   const list = document.getElementById('results-list');
 
   const n = restaurants.length;
+  const total = state.allResults.length;
+  const filtered = total > 0 && n < total;
   header.textContent = n === 0
-    ? 'No restaurants found in the corridor. Try locations farther apart.'
-    : `${n} restaurant${n !== 1 ? 's' : ''} found`;
+    ? (total > 0 ? 'No restaurants match the current filters.' : 'No restaurants found in the corridor. Try locations farther apart.')
+    : `${n}${filtered ? ` of ${total}` : ''} restaurant${n !== 1 ? 's' : ''} found`;
 
   list.innerHTML = '';
   restaurants.forEach((r, i) => {
@@ -377,6 +475,8 @@ function renderResults(restaurants, a, b) {
       <a class="card-link" href="${mapsUrl}" target="_blank" rel="noopener noreferrer">View on Maps</a>
     `;
 
+    card.addEventListener('mouseenter', () => hoverResult(i));
+    card.addEventListener('mouseleave', () => unhoverResult());
     card.addEventListener('click', (e) => {
       if (e.target.closest('.card-link')) return;
       highlightResult(i);
@@ -384,6 +484,16 @@ function renderResults(restaurants, a, b) {
 
     list.appendChild(card);
   });
+}
+
+function hoverResult(index) {
+  document.querySelectorAll('.marker-restaurant').forEach(el => {
+    el.classList.toggle('hover', parseInt(el.dataset.index) === index);
+  });
+}
+
+function unhoverResult() {
+  document.querySelectorAll('.marker-restaurant').forEach(el => el.classList.remove('hover'));
 }
 
 function highlightResult(index) {
@@ -412,13 +522,15 @@ const searchBtn = document.getElementById('search-btn');
 async function runSearch() {
   const a = state.a;
   const b = state.b;
-  if (!a || !b) return;
+  if (!a || !b || state.searching) return;
 
+  state.searching = true;
   searchBtn.disabled = true;
 
   try {
     const distanceKm = haversineKm(a.lat, a.lng, b.lat, b.lng);
     const midpoint = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 };
+    state.midpoint = midpoint;
 
     let raw;
     if (distanceKm < 100) {
@@ -429,26 +541,30 @@ async function runSearch() {
     }
 
     const filtered = filterByCorridor(raw, a, b, distanceKm);
-    filtered.sort((x, y) => (y.rating || 0) - (x.rating || 0));
+
+    // Cache full results so filters/sort can re-run without re-fetching
+    state.allResults = filtered;
 
     document.getElementById('map-section').hidden = false;
     document.getElementById('results-section').hidden = false;
 
+    const displayResults = applySort(applyFilters(filtered));
+
     const map = initMap(midpoint);
     map.on('load', () => {
       drawZone(map, a, b, distanceKm);
-      addMarkers(map, a, b, filtered);
+      addMarkers(map, a, b, displayResults);
     });
 
-    renderResults(filtered, a, b);
-
-    if (filtered.length > 0) {
-      document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
-    }
+    renderResults(displayResults, a, b);
   } catch (err) {
     console.error(err);
-    alert('Something went wrong: ' + err.message);
+    document.getElementById('map-section').hidden = false;
+    document.getElementById('results-section').hidden = false;
+    document.getElementById('results-header').textContent = 'Search failed — please try again.';
+    document.getElementById('results-list').innerHTML = '';
   } finally {
+    state.searching = false;
     searchBtn.disabled = false;
     updateControls();
   }
@@ -459,9 +575,14 @@ searchBtn.addEventListener('click', runSearch);
 // --- Startup ---
 
 async function init() {
-  const res = await fetch('api.php?action=config');
-  const cfg = await res.json();
-  MAPBOX_TOKEN = cfg.mapboxToken;
+  if (!MAPBOX_TOKEN || !MAPBOX_TOKEN.startsWith('pk.')) {
+    document.querySelector('main').innerHTML =
+      '<p style="padding:2rem;color:#dc2626">Configuration error: Mapbox token is missing or invalid. Check config.js.php loaded correctly and that MAPBOX_TOKEN in config.php starts with pk.</p>';
+    return;
+  }
+
+  setupSort();
+  setupFilters();
 
   setupInput(
     document.getElementById('location-a'),
@@ -477,11 +598,6 @@ async function init() {
     document.querySelector('.locate-btn[data-target="a"]'),
     document.getElementById('location-a'),
     'a'
-  );
-  setupLocateButton(
-    document.querySelector('.locate-btn[data-target="b"]'),
-    document.getElementById('location-b'),
-    'b'
   );
 
   // Restore from share link

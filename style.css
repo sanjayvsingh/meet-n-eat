@@ -196,11 +196,15 @@ main {
   user-select: none;
 }
 
-/* ---------- Map ---------- */
+/* ---------- Content area (map + results) ---------- */
 
-.map-section {
-  margin-bottom: 1.5rem;
+.content-area {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
+
+/* ---------- Map ---------- */
 
 #map {
   width: 100%;
@@ -208,6 +212,31 @@ main {
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* ---------- Wide layout: map left, results right ---------- */
+
+@media (min-width: 1024px) {
+  .content-area {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .map-section {
+    flex: 0 0 56%;
+    position: sticky;
+    top: 1.5rem;
+  }
+
+  #map {
+    height: calc(100vh - 180px);
+    min-height: 480px;
+  }
+
+  .results-section {
+    flex: 1;
+    min-width: 0;
+  }
 }
 
 /* ---------- Custom map markers ---------- */
@@ -234,16 +263,99 @@ main {
   height: 18px;
   background: #f59e0b;
   cursor: pointer;
-  transition: transform 0.1s;
+  transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.marker-restaurant.hover {
+  background: #ea580c;
+  transform: scale(1.7);
+  box-shadow: 0 0 0 4px rgba(234, 88, 12, 0.3);
+  z-index: 5;
 }
 
 .marker-restaurant.active {
   background: #d97706;
   transform: scale(1.35);
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.4);
   z-index: 10;
 }
 
 /* ---------- Results ---------- */
+
+.results-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.results-bar-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+#results-header {
+  flex-shrink: 0;
+}
+
+.sort-select {
+  padding: 0.25rem 0.5rem;
+  border: 1.5px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: #555;
+  background: white;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.sort-select:focus {
+  outline: none;
+  border-color: #4f46e5;
+}
+
+.filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.filter-btn {
+  padding: 0.3rem 0.75rem;
+  border: 1.5px solid #ddd;
+  border-radius: 999px;
+  background: white;
+  color: #555;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.filter-btn:hover {
+  border-color: #a5b4fc;
+  color: #4f46e5;
+}
+
+.filter-btn.active {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  color: white;
+}
+
+.filter-divider {
+  width: 1px;
+  height: 18px;
+  background: #ddd;
+  margin: 0 0.15rem;
+  flex-shrink: 0;
+}
 
 #results-header {
   font-size: 0.95rem;
