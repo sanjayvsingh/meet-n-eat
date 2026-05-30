@@ -1,6 +1,11 @@
 <?php
 header('Content-Type: application/json');
 
+if (!file_exists(__DIR__ . '/config.php')) {
+    http_response_code(500);
+    echo json_encode(['error' => 'config.php not found on server']);
+    exit;
+}
 require_once 'config.php';
 
 $action = $_GET['action'] ?? '';
