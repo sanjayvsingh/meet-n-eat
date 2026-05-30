@@ -64,6 +64,8 @@ $mapboxToken = defined('MAPBOX_TOKEN') ? MAPBOX_TOKEN : '';
 
     </section>
 
+    <div class="content-area">
+
     <section class="map-section" id="map-section" hidden>
       <div id="map"></div>
     </section>
@@ -93,6 +95,8 @@ $mapboxToken = defined('MAPBOX_TOKEN') ? MAPBOX_TOKEN : '';
       </div>
       <div id="results-list"></div>
     </section>
+
+    </div><!-- .content-area -->
 
   </main>
 

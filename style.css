@@ -196,11 +196,15 @@ main {
   user-select: none;
 }
 
-/* ---------- Map ---------- */
+/* ---------- Content area (map + results) ---------- */
 
-.map-section {
-  margin-bottom: 1.5rem;
+.content-area {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
+
+/* ---------- Map ---------- */
 
 #map {
   width: 100%;
@@ -208,6 +212,31 @@ main {
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* ---------- Wide layout: map left, results right ---------- */
+
+@media (min-width: 1024px) {
+  .content-area {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .map-section {
+    flex: 0 0 56%;
+    position: sticky;
+    top: 1.5rem;
+  }
+
+  #map {
+    height: calc(100vh - 180px);
+    min-height: 480px;
+  }
+
+  .results-section {
+    flex: 1;
+    min-width: 0;
+  }
 }
 
 /* ---------- Custom map markers ---------- */

@@ -557,10 +557,6 @@ async function runSearch() {
     });
 
     renderResults(displayResults, a, b);
-
-    if (filtered.length > 0) {
-      document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
-    }
   } catch (err) {
     console.error(err);
     document.getElementById('map-section').hidden = false;
