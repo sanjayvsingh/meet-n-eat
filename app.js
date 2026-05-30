@@ -10,6 +10,7 @@ const state = {
   markers: [],
   allResults: [],  // full unfiltered result set, preserved for filter re-runs
   activeFilters: new Set(),
+  searching: false,
 };
 
 // --- Utilities ---
@@ -484,8 +485,9 @@ const searchBtn = document.getElementById('search-btn');
 async function runSearch() {
   const a = state.a;
   const b = state.b;
-  if (!a || !b) return;
+  if (!a || !b || state.searching) return;
 
+  state.searching = true;
   searchBtn.disabled = true;
 
   try {
@@ -522,8 +524,12 @@ async function runSearch() {
     }
   } catch (err) {
     console.error(err);
-    alert('Something went wrong: ' + err.message);
+    document.getElementById('map-section').hidden = false;
+    document.getElementById('results-section').hidden = false;
+    document.getElementById('results-header').textContent = 'Search failed — please try again.';
+    document.getElementById('results-list').innerHTML = '';
   } finally {
+    state.searching = false;
     searchBtn.disabled = false;
     updateControls();
   }
