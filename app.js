@@ -276,6 +276,7 @@ async function fetchRestaurants(lat, lng, radiusMeters) {
     radius: Math.round(radiusMeters),
   });
   const res = await fetch('api.php?' + params);
+  if (!res.ok) throw new Error(`places request failed: ${res.status}`);
   const data = await res.json();
   if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
     throw new Error('Places API error: ' + (data.status || 'unknown'));
@@ -301,9 +302,12 @@ async function fetchAllCandidates(a, b, distanceKm) {
     lng: a.lng + t * (b.lng - a.lng),
   }));
 
-  const batches = await Promise.all(
+  const settled = await Promise.allSettled(
     searchPoints.map(p => fetchRestaurants(p.lat, p.lng, radiusMeters))
   );
+  const batches = settled
+    .filter(r => r.status === 'fulfilled')
+    .map(r => r.value);
 
   const seen = new Set();
   return batches.flat().filter(r => {
