@@ -157,6 +157,7 @@ if ($action === 'autocomplete') {
                     ],
                 ],
                 'includedTypes'   => ['restaurant'],
+                'excludedTypes'   => ['fast_food_restaurant', 'coffee_shop', 'cafe'],
                 'rankPreference'  => 'DISTANCE',
                 'maxResultCount'  => 20,
             ],
@@ -177,8 +178,11 @@ if ($action === 'autocomplete') {
     ];
 
     // Normalize to legacy field names — app.js uses place_id, name, geometry.location, etc.
+    // Skip price_level 1 (INEXPENSIVE) — fast food / budget chains not suitable for meetups.
     $results = [];
     foreach ($data['places'] ?? [] as $p) {
+        $pl = isset($p['priceLevel']) ? ($priceMap[$p['priceLevel']] ?? null) : null;
+        if ($pl === 1) continue;
         $results[] = [
             'place_id'          => $p['id'] ?? '',
             'name'              => $p['displayName']['text'] ?? '',

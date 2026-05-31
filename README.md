@@ -94,27 +94,20 @@ meet-n-eat/
 
 ## Search algorithm
 
+All searches use the actual driving route rather than the straight-line geographic midpoint. Two people on opposite corners of a highway network get very different drive times to a geometric midpoint; route-based search finds restaurants that are genuinely equidistant by travel time.
+
 1. Geocode both inputs via Google Places Autocomplete → coordinates
-2. Compute straight-line distance D with the Haversine formula
-3. **If D < 75 km (short route):**
-   - Search at the 25%, 37.5%, 50%, 62.5%, and 75% points along the A→B straight line in parallel, each with a radius proportional to the corridor width
-   - Filter: keep only restaurants whose projection onto A→B falls between 25% and 75%, and whose perpendicular distance from the line is within the corridor buffer (20% of D, capped at 10 km)
-   - Zone overlay: buffered capsule from the 25% to 75% mark along A→B
-4. **If D ≥ 75 km (long route):**
-   - Fetch the traffic-aware driving route via Google Directions (`departure_time=now`)
-   - Find the 33%, 50%, and 67% waypoints along the driving route
-   - Search at each waypoint sequentially with a 15 km radius (up to 60 results)
-   - No additional filtering — the geographic search already constrains the area
-   - Zone overlay: 15 km-buffered corridor through the three waypoints
-   - Route line drawn on the map showing the actual driving path
-   - If no driveable route exists (cross-ocean etc.), show a friendly message
+2. Fetch the driving route via Google Directions API
+3. Find the 33%, 50%, and 67% waypoints along the driving route
+4. Search at each waypoint sequentially with a 15 km radius (up to 60 results total)
 5. Deduplicate results by `place_id`
 6. Sort by rating (with review count as tiebreaker), distance from midpoint, or price
 
+If no driveable route exists (cross-ocean searches etc.), a friendly message is shown with the two location pins on the map.
+
 ## Zone overlay
 
-- **Short routes:** stadium/capsule shape (Turf.js buffered line) from the 25% to 75% mark along the straight A→B line. Width = 2 × corridor buffer.
-- **Long routes:** 15 km-buffered corridor through the 33%, 50%, and 67% driving-route waypoints, drawn as a sausage shape along the actual road path.
+A 15 km-buffered corridor drawn through the three route waypoints (33%, 50%, 67%), creating a sausage shape along the actual road path. The driving route itself is shown as a line on the map.
 
 ## Roadmap
 
