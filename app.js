@@ -544,6 +544,11 @@ async function runSearch() {
     state.midpoint = routeData.midpoint;
     const routePolyline = routeData.polyline || null;
 
+    // Scale radius to the straight-line distance so short routes don't cast
+    // a huge net. Min 1.5km, max 15km.
+    const radiusKm = Math.max(Math.min(distanceKm * 0.35, 15), 1.5);
+    const radiusMeters = Math.round(radiusKm * 1000);
+
     // Search sequentially at 33%, 50%, 67% of driving route to avoid
     // triggering the server's concurrent-request rate limiter.
     const routePoints = [routeData.p33, routeData.midpoint, routeData.p67];
@@ -552,7 +557,7 @@ async function runSearch() {
     let routeFailCount = 0;
     for (const p of routePoints) {
       try {
-        const batch = await fetchRestaurants(p.lat, p.lng, 15000);
+        const batch = await fetchRestaurants(p.lat, p.lng, radiusMeters);
         batch.forEach(r => {
           if (!seen.has(r.place_id)) { seen.add(r.place_id); raw.push(r); }
         });
@@ -566,13 +571,23 @@ async function runSearch() {
         [routeData.midpoint.lng, routeData.midpoint.lat],
         [routeData.p67.lng, routeData.p67.lat],
       ]),
-      15, { units: 'kilometers', steps: 16 }
+      radiusKm, { units: 'kilometers', steps: 16 }
     );
 
-    state.allResults = raw;
+    // Hard-limit results to the bounding box of A and B.
+    const minLat = Math.min(a.lat, b.lat);
+    const maxLat = Math.max(a.lat, b.lat);
+    const minLng = Math.min(a.lng, b.lng);
+    const maxLng = Math.max(a.lng, b.lng);
+    const inBounds = raw.filter(r => {
+      const { lat, lng } = r.geometry.location;
+      return lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng;
+    });
+
+    state.allResults = inBounds;
 
     // Pre-compute distances so sort and render don't repeat haversine calls
-    raw.forEach(r => {
+    inBounds.forEach(r => {
       const rLat = r.geometry.location.lat;
       const rLng = r.geometry.location.lng;
       r._dA        = haversineKm(a.lat, a.lng, rLat, rLng);
@@ -580,7 +595,7 @@ async function runSearch() {
       r._dMidpoint = haversineKm(state.midpoint.lat, state.midpoint.lng, rLat, rLng);
     });
 
-    const displayResults = applySort(applyFilters(raw));
+    const displayResults = applySort(applyFilters(inBounds));
 
     const applyMapLayers = () => {
       if (routePolyline) drawRoute(map, routePolyline);
