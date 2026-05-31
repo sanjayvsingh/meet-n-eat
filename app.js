@@ -348,6 +348,21 @@ function initMap(center) {
 }
 
 
+// Return the portion of routePolyline that falls between p33 and p67,
+// using the closest polyline vertex to each waypoint as the splice point.
+function trimPolyline(polylinePoints, p33, p67) {
+  let si = 0, ei = polylinePoints.length - 1;
+  let sd = Infinity, ed = Infinity;
+  polylinePoints.forEach((pt, i) => {
+    const d33 = (pt.lat - p33.lat) ** 2 + (pt.lng - p33.lng) ** 2;
+    const d67 = (pt.lat - p67.lat) ** 2 + (pt.lng - p67.lng) ** 2;
+    if (d33 < sd) { sd = d33; si = i; }
+    if (d67 < ed) { ed = d67; ei = i; }
+  });
+  if (si > ei) [si, ei] = [ei, si];
+  return [p33, ...polylinePoints.slice(si + 1, ei), p67];
+}
+
 function drawRoute(map, polylinePoints) {
   const geojson = {
     type: 'Feature',
@@ -565,12 +580,13 @@ async function runSearch() {
     }
     if (routeFailCount >= 2) showToast('Some search areas failed — results may be incomplete.');
 
+    // Buffer the actual route polyline trimmed to the 33–67% section so the
+    // zone follows the road rather than cutting straight across the map.
+    const trimmedPolyline = routePolyline
+      ? trimPolyline(routePolyline, routeData.p33, routeData.p67)
+      : [routeData.p33, routeData.midpoint, routeData.p67];
     const zoneGeoJSON = turf.buffer(
-      turf.lineString([
-        [routeData.p33.lng, routeData.p33.lat],
-        [routeData.midpoint.lng, routeData.midpoint.lat],
-        [routeData.p67.lng, routeData.p67.lat],
-      ]),
+      turf.lineString(trimmedPolyline.map(p => [p.lng, p.lat])),
       radiusKm, { units: 'kilometers', steps: 16 }
     );
 
