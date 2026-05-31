@@ -533,17 +533,17 @@ async function runSearch() {
     const raw = routeData.results || [];
     const radiusKm = routeData.radiusKm;
 
-    // Zone: union of the three search circles, clipped to the A–B bounding box.
-    const searchPoints = [routeData.p33, routeData.midpoint, routeData.p67];
-    const circles = searchPoints.map(p =>
-      turf.circle([p.lng, p.lat], radiusKm, { units: 'kilometers', steps: 32 })
-    );
-    const unioned = circles.reduce((acc, c) => turf.union(acc, c));
+    // Zone: buffer the trimmed road path (p25–p75), clipped to A–B bounding box.
+    // Road polyline keeps it as one sausage even when waypoints are far apart.
     const bboxPoly = turf.bboxPolygon([
       Math.min(a.lng, b.lng), Math.min(a.lat, b.lat),
       Math.max(a.lng, b.lng), Math.max(a.lat, b.lat),
     ]);
-    const zoneGeoJSON = turf.intersect(unioned, bboxPoly) || unioned;
+    const zoneBuffer = turf.buffer(
+      turf.lineString(routeData.trimmedPolyline.map(p => [p.lng, p.lat])),
+      radiusKm, { units: 'kilometers', steps: 32 }
+    );
+    const zoneGeoJSON = turf.intersect(zoneBuffer, bboxPoly) || zoneBuffer;
 
     // Hard-limit results to the bounding box of A and B.
     const minLat = Math.min(a.lat, b.lat);
