@@ -13,7 +13,6 @@ const state = {
   activeFilters: new Set(),
   sortBy: 'rating',
   midpoint: null,
-  longRoute: false,
   searching: false,
 };
 
@@ -329,63 +328,6 @@ async function fetchRestaurants(lat, lng, radiusMeters) {
   return data.results || [];
 }
 
-// Buffer width for the corridor (capped at 10km so it doesn't grow absurdly large)
-function corridorBufferKm(distanceKm) {
-  return Math.min(distanceKm * 0.2, 10);
-}
-
-// Fetch from 5 evenly-spaced points along the corridor in parallel,
-// each with a generous radius, then deduplicate by place_id.
-// The wider radius compensates for Google's 20-result-per-call cap.
-async function fetchAllCandidates(a, b, distanceKm) {
-  const bufKm = corridorBufferKm(distanceKm);
-  const radiusMeters = Math.min(Math.max(bufKm * 3, 3) * 1000, 50000);
-
-  const fractions = [0.25, 0.375, 0.5, 0.625, 0.75];
-  const searchPoints = fractions.map(t => ({
-    lat: a.lat + t * (b.lat - a.lat),
-    lng: a.lng + t * (b.lng - a.lng),
-  }));
-
-  const settled = await Promise.allSettled(
-    searchPoints.map(p => fetchRestaurants(p.lat, p.lng, radiusMeters))
-  );
-  const failed = settled.filter(r => r.status === 'rejected').length;
-  if (failed >= 3) showToast('Some search areas failed — results may be incomplete.');
-  const batches = settled
-    .filter(r => r.status === 'fulfilled')
-    .map(r => r.value);
-
-  const seen = new Set();
-  return batches.flat().filter(r => {
-    if (seen.has(r.place_id)) return false;
-    seen.add(r.place_id);
-    return true;
-  });
-}
-
-// Keep restaurants whose projection onto the A-B segment falls in [minT, maxT]
-// and whose perpendicular distance is within the corridor buffer.
-function filterByCorridor(restaurants, a, b, distanceKm, minT = 0.25, maxT = 0.75) {
-  const bufKm = corridorBufferKm(distanceKm);
-  const ABx = b.lng - a.lng;
-  const ABy = b.lat - a.lat;
-  const AB2 = ABx * ABx + ABy * ABy;
-
-  return restaurants.filter(r => {
-    const rLat = r.geometry.location.lat;
-    const rLng = r.geometry.location.lng;
-
-    // Projection fraction along A-B (0 = at A, 1 = at B)
-    const t = ((rLng - a.lng) * ABx + (rLat - a.lat) * ABy) / AB2;
-    if (t < minT || t > maxT) return false;
-
-    // Perpendicular distance from the projection point to the restaurant
-    const projLat = a.lat + t * ABy;
-    const projLng = a.lng + t * ABx;
-    return haversineKm(rLat, rLng, projLat, projLng) <= bufKm;
-  });
-}
 
 // --- Map ---
 
@@ -405,14 +347,6 @@ function initMap(center) {
   return state.map;
 }
 
-// Corridor: buffer the 25%-to-75% line segment by corridorBufferKm.
-// Stays entirely within the A-B bounding box.
-function corridorGeoJSON(a, b, distanceKm, minT = 0.25, maxT = 0.75) {
-  const pStart = [a.lng + minT * (b.lng - a.lng), a.lat + minT * (b.lat - a.lat)];
-  const pEnd   = [a.lng + maxT * (b.lng - a.lng), a.lat + maxT * (b.lat - a.lat)];
-  const line = turf.lineString([pStart, pEnd]);
-  return turf.buffer(line, corridorBufferKm(distanceKm), { units: 'kilometers', steps: 16 });
-}
 
 function drawRoute(map, polylinePoints) {
   const geojson = {
@@ -430,10 +364,6 @@ function drawRoute(map, polylinePoints) {
   });
 }
 
-function clearRoute(map) {
-  if (map.getLayer('route-line')) map.removeLayer('route-line');
-  if (map.getSource('route')) map.removeSource('route');
-}
 
 function drawZone(map, geojson) {
   if (!geojson) return;
@@ -610,52 +540,39 @@ async function runSearch() {
     document.getElementById('results-list').innerHTML = '<div class="search-loading">Finding restaurants in the middle…</div>';
     const map = initMap(midpoint);
 
-    const longRoute = distanceKm >= 75;
-    state.longRoute = longRoute;
-    const [minT, maxT] = longRoute ? [1/3, 2/3] : [0.25, 0.75];
+    const routeData = await getRouteData(a, b);
+    state.midpoint = routeData.midpoint;
+    const routePolyline = routeData.polyline || null;
 
-    let raw, zoneGeoJSON, routePolyline = null;
-    if (!longRoute) {
-      raw = await fetchAllCandidates(a, b, distanceKm);
-      zoneGeoJSON = corridorGeoJSON(a, b, distanceKm, minT, maxT);
-    } else {
-      const routeData = await getRouteData(a, b);
-      state.midpoint = routeData.midpoint;
-      routePolyline = routeData.polyline || null;
-
-      // Search sequentially at 33%, 50%, 67% of driving route — sequential to
-      // avoid triggering the server's concurrent-request rate limiter.
-      const routePoints = [routeData.p33, routeData.midpoint, routeData.p67];
-      const seen = new Set();
-      raw = [];
-      let routeFailCount = 0;
-      for (const p of routePoints) {
-        try {
-          const batch = await fetchRestaurants(p.lat, p.lng, 15000);
-          batch.forEach(r => {
-            if (!seen.has(r.place_id)) { seen.add(r.place_id); raw.push(r); }
-          });
-        } catch { routeFailCount++; }
-      }
-      if (routeFailCount >= 2) showToast('Some search areas failed — results may be incomplete.');
-
-      zoneGeoJSON = turf.buffer(
-        turf.lineString([
-          [routeData.p33.lng, routeData.p33.lat],
-          [routeData.midpoint.lng, routeData.midpoint.lat],
-          [routeData.p67.lng, routeData.p67.lat],
-        ]),
-        15, { units: 'kilometers', steps: 16 }
-      );
+    // Search sequentially at 33%, 50%, 67% of driving route to avoid
+    // triggering the server's concurrent-request rate limiter.
+    const routePoints = [routeData.p33, routeData.midpoint, routeData.p67];
+    const seen = new Set();
+    const raw = [];
+    let routeFailCount = 0;
+    for (const p of routePoints) {
+      try {
+        const batch = await fetchRestaurants(p.lat, p.lng, 15000);
+        batch.forEach(r => {
+          if (!seen.has(r.place_id)) { seen.add(r.place_id); raw.push(r); }
+        });
+      } catch { routeFailCount++; }
     }
+    if (routeFailCount >= 2) showToast('Some search areas failed — results may be incomplete.');
 
-    const filtered = longRoute
-      ? raw
-      : filterByCorridor(raw, a, b, distanceKm, minT, maxT);
-    state.allResults = filtered;
+    const zoneGeoJSON = turf.buffer(
+      turf.lineString([
+        [routeData.p33.lng, routeData.p33.lat],
+        [routeData.midpoint.lng, routeData.midpoint.lat],
+        [routeData.p67.lng, routeData.p67.lat],
+      ]),
+      15, { units: 'kilometers', steps: 16 }
+    );
+
+    state.allResults = raw;
 
     // Pre-compute distances so sort and render don't repeat haversine calls
-    filtered.forEach(r => {
+    raw.forEach(r => {
       const rLat = r.geometry.location.lat;
       const rLng = r.geometry.location.lng;
       r._dA        = haversineKm(a.lat, a.lng, rLat, rLng);
@@ -663,11 +580,10 @@ async function runSearch() {
       r._dMidpoint = haversineKm(state.midpoint.lat, state.midpoint.lng, rLat, rLng);
     });
 
-    const displayResults = applySort(applyFilters(filtered));
+    const displayResults = applySort(applyFilters(raw));
 
     const applyMapLayers = () => {
       if (routePolyline) drawRoute(map, routePolyline);
-      else clearRoute(map);
       drawZone(map, zoneGeoJSON);
       addMarkers(map, a, b, displayResults);
     };
