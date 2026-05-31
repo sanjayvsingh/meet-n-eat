@@ -99,7 +99,7 @@ All searches use the actual driving route rather than the straight-line geograph
 1. Geocode both inputs via Google Places Autocomplete → coordinates
 2. Fetch the driving route via Google Directions API
 3. Find the 33%, 50%, and 67% waypoints along the driving route
-4. Search at each waypoint sequentially with a 15 km radius (up to 60 results total)
+4. Search sequentially at the 33%, 50%, and 67% route waypoints using Nearby Search, with a radius scaled to the straight-line distance (35% of distance, clamped 1.5–15 km, up to 60 results total)
 5. Deduplicate results by `place_id`
 6. Sort by rating (with review count as tiebreaker), distance from midpoint, or price
 
@@ -107,7 +107,7 @@ If no driveable route exists (cross-ocean searches etc.), a friendly message is 
 
 ## Zone overlay
 
-A 15 km-buffered corridor drawn through the three route waypoints (33%, 50%, 67%), creating a sausage shape along the actual road path. The driving route itself is shown as a line on the map.
+The union of three circles centred at the 33%, 50%, and 67% route waypoints, each with a radius of 35% of the straight-line distance (clamped 1.5–15 km), clipped to the bounding box of the two endpoints. This matches the three Nearby Search queries and is intentionally wider than the exact road — a restaurant on a parallel street is equally valid if it's equidistant by drive time. The full driving route is shown as a line on the map.
 
 ## Roadmap
 

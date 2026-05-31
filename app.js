@@ -312,21 +312,6 @@ async function getRouteData(a, b) {
 
 // --- Restaurant fetch & filter ---
 
-async function fetchRestaurants(lat, lng, radiusMeters) {
-  const params = new URLSearchParams({
-    action: 'places',
-    lat,
-    lng,
-    radius: Math.round(radiusMeters),
-  });
-  const res = await fetch('api.php?' + params);
-  if (!res.ok) throw new Error(`places request failed: ${res.status}`);
-  const data = await res.json();
-  if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-    throw new Error('Places API error: ' + (data.status || 'unknown'));
-  }
-  return data.results || [];
-}
 
 
 // --- Map ---
@@ -348,20 +333,6 @@ function initMap(center) {
 }
 
 
-// Return the portion of routePolyline that falls between p33 and p67,
-// using the closest polyline vertex to each waypoint as the splice point.
-function trimPolyline(polylinePoints, p33, p67) {
-  let si = 0, ei = polylinePoints.length - 1;
-  let sd = Infinity, ed = Infinity;
-  polylinePoints.forEach((pt, i) => {
-    const d33 = (pt.lat - p33.lat) ** 2 + (pt.lng - p33.lng) ** 2;
-    const d67 = (pt.lat - p67.lat) ** 2 + (pt.lng - p67.lng) ** 2;
-    if (d33 < sd) { sd = d33; si = i; }
-    if (d67 < ed) { ed = d67; ei = i; }
-  });
-  if (si > ei) [si, ei] = [ei, si];
-  return [p33, ...polylinePoints.slice(si + 1, ei), p67];
-}
 
 function drawRoute(map, polylinePoints) {
   const geojson = {
@@ -544,7 +515,6 @@ async function runSearch() {
   searchBtn.disabled = true;
 
   try {
-    const distanceKm = haversineKm(a.lat, a.lng, b.lat, b.lng);
     const midpoint = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 };
     state.midpoint = midpoint;
 
@@ -559,36 +529,21 @@ async function runSearch() {
     state.midpoint = routeData.midpoint;
     const routePolyline = routeData.polyline || null;
 
-    // Scale radius to the straight-line distance so short routes don't cast
-    // a huge net. Min 1.5km, max 15km.
-    const radiusKm = Math.max(Math.min(distanceKm * 0.35, 15), 1.5);
-    const radiusMeters = Math.round(radiusKm * 1000);
+    // Results and radius are returned by the route action (searches run server-side).
+    const raw = routeData.results || [];
+    const radiusKm = routeData.radiusKm;
 
-    // Search sequentially at 33%, 50%, 67% of driving route to avoid
-    // triggering the server's concurrent-request rate limiter.
-    const routePoints = [routeData.p33, routeData.midpoint, routeData.p67];
-    const seen = new Set();
-    const raw = [];
-    let routeFailCount = 0;
-    for (const p of routePoints) {
-      try {
-        const batch = await fetchRestaurants(p.lat, p.lng, radiusMeters);
-        batch.forEach(r => {
-          if (!seen.has(r.place_id)) { seen.add(r.place_id); raw.push(r); }
-        });
-      } catch { routeFailCount++; }
-    }
-    if (routeFailCount >= 2) showToast('Some search areas failed — results may be incomplete.');
-
-    // Buffer the actual route polyline trimmed to the 33–67% section so the
-    // zone follows the road rather than cutting straight across the map.
-    const trimmedPolyline = routePolyline
-      ? trimPolyline(routePolyline, routeData.p33, routeData.p67)
-      : [routeData.p33, routeData.midpoint, routeData.p67];
-    const zoneGeoJSON = turf.buffer(
-      turf.lineString(trimmedPolyline.map(p => [p.lng, p.lat])),
-      radiusKm, { units: 'kilometers', steps: 16 }
+    // Zone: union of the three search circles, clipped to the A–B bounding box.
+    const searchPoints = [routeData.p33, routeData.midpoint, routeData.p67];
+    const circles = searchPoints.map(p =>
+      turf.circle([p.lng, p.lat], radiusKm, { units: 'kilometers', steps: 32 })
     );
+    const unioned = circles.reduce((acc, c) => turf.union(acc, c));
+    const bboxPoly = turf.bboxPolygon([
+      Math.min(a.lng, b.lng), Math.min(a.lat, b.lat),
+      Math.max(a.lng, b.lng), Math.max(a.lat, b.lat),
+    ]);
+    const zoneGeoJSON = turf.intersect(unioned, bboxPoly) || unioned;
 
     // Hard-limit results to the bounding box of A and B.
     const minLat = Math.min(a.lat, b.lat);
