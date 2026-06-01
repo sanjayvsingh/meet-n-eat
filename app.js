@@ -74,7 +74,7 @@ function setupInput(inputEl, listEl, targetKey) {
   let autocompleteController = null;
 
   const debouncedSearch = debounce(async (query) => {
-    if (query.length < 2) { listEl.innerHTML = ''; return; }
+    if (query.length < 3) { listEl.innerHTML = ''; return; }
     autocompleteController?.abort();
     autocompleteController = new AbortController();
     try {
@@ -105,7 +105,7 @@ function setupInput(inputEl, listEl, targetKey) {
     } catch (err) {
       if (err.name !== 'AbortError') listEl.innerHTML = '';
     }
-  }, 200);
+  }, 500);
 
   inputEl.addEventListener('input', () => {
     state[targetKey] = null;
