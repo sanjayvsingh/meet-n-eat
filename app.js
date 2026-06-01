@@ -510,6 +510,7 @@ async function runSearch() {
   const a = state.a;
   const b = state.b;
   if (!a || !b || state.searching) return;
+  if (!isFinite(a.lat) || !isFinite(a.lng) || !isFinite(b.lat) || !isFinite(b.lng)) return;
 
   state.searching = true;
   searchBtn.disabled = true;
@@ -632,9 +633,10 @@ async function init() {
 
   // Restore from share link
   const p = new URLSearchParams(location.search);
-  if (p.get('alat') && p.get('alng') && p.get('blat') && p.get('blng')) {
-    state.a = { lat: +p.get('alat'), lng: +p.get('alng'), name: escapeHtml(p.get('aname') || 'Location A') };
-    state.b = { lat: +p.get('blat'), lng: +p.get('blng'), name: escapeHtml(p.get('bname') || 'Location B') };
+  const alat = +p.get('alat'), alng = +p.get('alng'), blat = +p.get('blat'), blng = +p.get('blng');
+  if (isFinite(alat) && isFinite(alng) && isFinite(blat) && isFinite(blng) && (alat || alng) && (blat || blng)) {
+    state.a = { lat: alat, lng: alng, name: escapeHtml(p.get('aname') || 'Location A') };
+    state.b = { lat: blat, lng: blng, name: escapeHtml(p.get('bname') || 'Location B') };
     document.getElementById('location-a').value = state.a.name;
     document.getElementById('location-b').value = state.b.name;
     updateControls();
