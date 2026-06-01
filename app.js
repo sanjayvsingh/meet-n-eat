@@ -533,8 +533,17 @@ async function runSearch() {
     const raw = routeData.results || [];
     const radiusKm = routeData.radiusKm;
 
-    // Zone: buffer the trimmed road path (p25–p75), clipped to A–B bounding box.
-    // Road polyline keeps it as one sausage even when waypoints are far apart.
+    // Bounding box from the trimmed route extent plus both endpoints.
+    // Using the route (not just A and B) prevents clipping on routes where
+    // the endpoints share a similar lat/lng (e.g. NJ→Pittsburgh curves north).
+    const routeLats = routeData.trimmedPolyline.map(p => p.lat);
+    const routeLngs = routeData.trimmedPolyline.map(p => p.lng);
+    const minLat = Math.min(a.lat, b.lat, ...routeLats);
+    const maxLat = Math.max(a.lat, b.lat, ...routeLats);
+    const minLng = Math.min(a.lng, b.lng, ...routeLngs);
+    const maxLng = Math.max(a.lng, b.lng, ...routeLngs);
+
+    // Zone: buffer the trimmed road path, clipped to route bounding box.
     const bboxPoly = turf.bboxPolygon([minLng, minLat, maxLng, maxLat]);
     const zoneBuffer = turf.buffer(
       turf.lineString(routeData.trimmedPolyline.map(p => [p.lng, p.lat])),
@@ -542,15 +551,6 @@ async function runSearch() {
     );
     const zoneGeoJSON = turf.intersect(zoneBuffer, bboxPoly) || zoneBuffer;
 
-    // Clip results to the bounding box of the trimmed route (p25–p75) plus both
-    // endpoints. Using the route extent prevents clipping on routes where A and B
-    // share a similar lat or lng (e.g. NJ→Pittsburgh: same lat, route curves north).
-    const routeLats = routeData.trimmedPolyline.map(p => p.lat);
-    const routeLngs = routeData.trimmedPolyline.map(p => p.lng);
-    const minLat = Math.min(a.lat, b.lat, ...routeLats);
-    const maxLat = Math.max(a.lat, b.lat, ...routeLats);
-    const minLng = Math.min(a.lng, b.lng, ...routeLngs);
-    const maxLng = Math.max(a.lng, b.lng, ...routeLngs);
     const inBounds = raw.filter(r => {
       const { lat, lng } = r.geometry.location;
       return lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng;
