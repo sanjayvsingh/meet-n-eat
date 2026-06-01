@@ -228,12 +228,90 @@ if ($action === 'autocomplete') {
     $polyline    = $response['routes'][0]['overview_polyline']['points'];
     $totalMeters = $response['routes'][0]['legs'][0]['distance']['value'];
     $decoded     = decodePolyline($polyline);
+    $trimmed    = trimPolylinePoints($decoded, $totalMeters, 0.25, 0.75);
+    $p33        = findRoutePoint($decoded, $totalMeters, 1/3);
+    $p50        = findRoutePoint($decoded, $totalMeters, 0.5);
+    $p67        = findRoutePoint($decoded, $totalMeters, 2/3);
+
+    // Radius scales with straight-line distance (same formula as the old JS side).
+    $distanceKm = haversineKm($oLat, $oLng, $dLat, $dLng);
+    $radiusKm   = max(min($distanceKm * 0.35, 15.0), 1.5);
+    $radiusM    = (int) round($radiusKm * 1000);
+
+    // Three sequential Nearby Searches done server-side so the browser only
+    // makes one request — avoids the mod_evasive rate-limit on rapid GETs.
+    $excludedTypes = ['fast_food_restaurant', 'coffee_shop', 'cafe'];
+    $priceMap = [
+        'PRICE_LEVEL_FREE'           => 0,
+        'PRICE_LEVEL_INEXPENSIVE'    => 1,
+        'PRICE_LEVEL_MODERATE'       => 2,
+        'PRICE_LEVEL_EXPENSIVE'      => 3,
+        'PRICE_LEVEL_VERY_EXPENSIVE' => 4,
+    ];
+
+    $seen    = [];
+    $results = [];
+    foreach ([$p33, $p50, $p67] as $pt) {
+        $pData = json_decode(
+            httpPost(
+                'https://places.googleapis.com/v1/places:searchNearby',
+                [
+                    'locationRestriction' => [
+                        'circle' => [
+                            'center' => ['latitude' => $pt['lat'], 'longitude' => $pt['lng']],
+                            'radius' => $radiusM,
+                        ],
+                    ],
+                    'includedTypes'  => ['restaurant'],
+                    'excludedTypes'  => $excludedTypes,
+                    'rankPreference' => 'DISTANCE',
+                    'maxResultCount' => 20,
+                ],
+                [
+                    $authHeader,
+                    'X-Goog-FieldMask: places.id,places.displayName,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.types,places.primaryTypeDisplayName,places.formattedAddress,places.location',
+                ]
+            ),
+            true
+        );
+
+        foreach ($pData['places'] ?? [] as $p) {
+            $id = $p['id'] ?? '';
+            if (!$id || isset($seen[$id])) continue;
+            $seen[$id] = true;
+            $pl = isset($p['priceLevel']) ? ($priceMap[$p['priceLevel']] ?? null) : null;
+            if ($pl === 1) continue;
+            $types = $p['types'] ?? [];
+            $results[] = [
+                'place_id'           => $id,
+                'name'               => $p['displayName']['text'] ?? '',
+                'rating'             => $p['rating'] ?? null,
+                'user_ratings_total' => $p['userRatingCount'] ?? 0,
+                'price_level'        => $pl,
+                'opening_hours'      => isset($p['currentOpeningHours']['openNow'])
+                                         ? ['open_now' => $p['currentOpeningHours']['openNow']]
+                                         : null,
+                'types'              => $types,
+                'primary_type'       => $p['primaryTypeDisplayName']['text'] ?? null,
+                'vicinity'           => $p['formattedAddress'] ?? '',
+                'geometry'           => [
+                    'location' => [
+                        'lat' => $p['location']['latitude']  ?? 0,
+                        'lng' => $p['location']['longitude'] ?? 0,
+                    ],
+                ],
+            ];
+        }
+    }
 
     echo json_encode([
-        'midpoint' => findRoutePoint($decoded, $totalMeters, 0.5),
-        'p33'      => findRoutePoint($decoded, $totalMeters, 1/3),
-        'p67'      => findRoutePoint($decoded, $totalMeters, 2/3),
-        'polyline' => $decoded,
+        'midpoint'        => $p50,
+        'p33'             => $p33,
+        'p67'             => $p67,
+        'polyline'        => $decoded,
+        'trimmedPolyline' => $trimmed,
+        'radiusKm'        => $radiusKm,
+        'results'         => $results,
     ]);
 
 } else {
@@ -278,6 +356,70 @@ function haversineKm($lat1, $lng1, $lat2, $lng2) {
     $dLng = deg2rad($lng2 - $lng1);
     $a    = sin($dLat/2)**2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng/2)**2;
     return $R * 2 * atan2(sqrt($a), sqrt(1 - $a));
+}
+
+function trimPolylinePoints($points, $totalMeters, $fromFraction, $toFraction) {
+    $fromKm      = ($totalMeters / 1000) * $fromFraction;
+    $toKm        = ($totalMeters / 1000) * $toFraction;
+    $accumulated = 0.0;
+    $result      = [];
+
+    for ($i = 1; $i < count($points); $i++) {
+        $seg    = haversineKm(
+            $points[$i-1]['lat'], $points[$i-1]['lng'],
+            $points[$i]['lat'],   $points[$i]['lng']
+        );
+        $segEnd = $accumulated + $seg;
+
+        if ($segEnd > $fromKm && $accumulated < $toKm) {
+            if (empty($result)) {
+                $frac     = $seg > 0 ? max(0.0, ($fromKm - $accumulated) / $seg) : 0.0;
+                $result[] = [
+                    'lat' => $points[$i-1]['lat'] + $frac * ($points[$i]['lat'] - $points[$i-1]['lat']),
+                    'lng' => $points[$i-1]['lng'] + $frac * ($points[$i]['lng'] - $points[$i-1]['lng']),
+                ];
+            }
+            if ($segEnd <= $toKm) {
+                $result[] = $points[$i];
+            } else {
+                $frac     = $seg > 0 ? min(1.0, ($toKm - $accumulated) / $seg) : 1.0;
+                $result[] = [
+                    'lat' => $points[$i-1]['lat'] + $frac * ($points[$i]['lat'] - $points[$i-1]['lat']),
+                    'lng' => $points[$i-1]['lng'] + $frac * ($points[$i]['lng'] - $points[$i-1]['lng']),
+                ];
+                break;
+            }
+        }
+
+        $accumulated += $seg;
+    }
+
+    return $result ?: $points;
+}
+
+function encodePolylineValue($v) {
+    $v   = $v < 0 ? ~($v << 1) : ($v << 1);
+    $out = '';
+    while ($v >= 0x20) {
+        $out .= chr((0x20 | ($v & 0x1f)) + 63);
+        $v >>= 5;
+    }
+    return $out . chr($v + 63);
+}
+
+function encodePolyline($points) {
+    $encoded = '';
+    $prevLat = 0;
+    $prevLng = 0;
+    foreach ($points as $p) {
+        $lat     = (int) round($p['lat'] * 1e5);
+        $lng     = (int) round($p['lng'] * 1e5);
+        $encoded .= encodePolylineValue($lat - $prevLat);
+        $encoded .= encodePolylineValue($lng - $prevLng);
+        $prevLat = $lat;
+        $prevLng = $lng;
+    }
+    return $encoded;
 }
 
 function findRoutePoint($points, $totalMeters, $fraction) {

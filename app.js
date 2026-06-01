@@ -74,7 +74,7 @@ function setupInput(inputEl, listEl, targetKey) {
   let autocompleteController = null;
 
   const debouncedSearch = debounce(async (query) => {
-    if (query.length < 2) { listEl.innerHTML = ''; return; }
+    if (query.length < 3) { listEl.innerHTML = ''; return; }
     autocompleteController?.abort();
     autocompleteController = new AbortController();
     try {
@@ -105,7 +105,7 @@ function setupInput(inputEl, listEl, targetKey) {
     } catch (err) {
       if (err.name !== 'AbortError') listEl.innerHTML = '';
     }
-  }, 200);
+  }, 500);
 
   inputEl.addEventListener('input', () => {
     state[targetKey] = null;
@@ -312,21 +312,6 @@ async function getRouteData(a, b) {
 
 // --- Restaurant fetch & filter ---
 
-async function fetchRestaurants(lat, lng, radiusMeters) {
-  const params = new URLSearchParams({
-    action: 'places',
-    lat,
-    lng,
-    radius: Math.round(radiusMeters),
-  });
-  const res = await fetch('api.php?' + params);
-  if (!res.ok) throw new Error(`places request failed: ${res.status}`);
-  const data = await res.json();
-  if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-    throw new Error('Places API error: ' + (data.status || 'unknown'));
-  }
-  return data.results || [];
-}
 
 
 // --- Map ---
@@ -346,6 +331,7 @@ function initMap(center) {
   state.map.addControl(new mapboxgl.NavigationControl(), 'top-right');
   return state.map;
 }
+
 
 
 function drawRoute(map, polylinePoints) {
@@ -524,12 +510,12 @@ async function runSearch() {
   const a = state.a;
   const b = state.b;
   if (!a || !b || state.searching) return;
+  if (!isFinite(a.lat) || !isFinite(a.lng) || !isFinite(b.lat) || !isFinite(b.lng)) return;
 
   state.searching = true;
   searchBtn.disabled = true;
 
   try {
-    const distanceKm = haversineKm(a.lat, a.lng, b.lat, b.lng);
     const midpoint = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 };
     state.midpoint = midpoint;
 
@@ -544,35 +530,37 @@ async function runSearch() {
     state.midpoint = routeData.midpoint;
     const routePolyline = routeData.polyline || null;
 
-    // Search sequentially at 33%, 50%, 67% of driving route to avoid
-    // triggering the server's concurrent-request rate limiter.
-    const routePoints = [routeData.p33, routeData.midpoint, routeData.p67];
-    const seen = new Set();
-    const raw = [];
-    let routeFailCount = 0;
-    for (const p of routePoints) {
-      try {
-        const batch = await fetchRestaurants(p.lat, p.lng, 15000);
-        batch.forEach(r => {
-          if (!seen.has(r.place_id)) { seen.add(r.place_id); raw.push(r); }
-        });
-      } catch { routeFailCount++; }
-    }
-    if (routeFailCount >= 2) showToast('Some search areas failed — results may be incomplete.');
+    // Results and radius are returned by the route action (searches run server-side).
+    const raw = routeData.results || [];
+    const radiusKm = routeData.radiusKm;
 
-    const zoneGeoJSON = turf.buffer(
-      turf.lineString([
-        [routeData.p33.lng, routeData.p33.lat],
-        [routeData.midpoint.lng, routeData.midpoint.lat],
-        [routeData.p67.lng, routeData.p67.lat],
-      ]),
-      15, { units: 'kilometers', steps: 16 }
+    // Bounding box from the trimmed route extent plus both endpoints.
+    // Using the route (not just A and B) prevents clipping on routes where
+    // the endpoints share a similar lat/lng (e.g. NJ→Pittsburgh curves north).
+    const routeLats = routeData.trimmedPolyline.map(p => p.lat);
+    const routeLngs = routeData.trimmedPolyline.map(p => p.lng);
+    const minLat = Math.min(a.lat, b.lat, ...routeLats);
+    const maxLat = Math.max(a.lat, b.lat, ...routeLats);
+    const minLng = Math.min(a.lng, b.lng, ...routeLngs);
+    const maxLng = Math.max(a.lng, b.lng, ...routeLngs);
+
+    // Zone: buffer the trimmed road path, clipped to route bounding box.
+    const bboxPoly = turf.bboxPolygon([minLng, minLat, maxLng, maxLat]);
+    const zoneBuffer = turf.buffer(
+      turf.lineString(routeData.trimmedPolyline.map(p => [p.lng, p.lat])),
+      radiusKm, { units: 'kilometers', steps: 32 }
     );
+    const zoneGeoJSON = turf.intersect(zoneBuffer, bboxPoly) || zoneBuffer;
 
-    state.allResults = raw;
+    const inBounds = raw.filter(r => {
+      const { lat, lng } = r.geometry.location;
+      return lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng;
+    });
+
+    state.allResults = inBounds;
 
     // Pre-compute distances so sort and render don't repeat haversine calls
-    raw.forEach(r => {
+    inBounds.forEach(r => {
       const rLat = r.geometry.location.lat;
       const rLng = r.geometry.location.lng;
       r._dA        = haversineKm(a.lat, a.lng, rLat, rLng);
@@ -580,7 +568,7 @@ async function runSearch() {
       r._dMidpoint = haversineKm(state.midpoint.lat, state.midpoint.lng, rLat, rLng);
     });
 
-    const displayResults = applySort(applyFilters(raw));
+    const displayResults = applySort(applyFilters(inBounds));
 
     const applyMapLayers = () => {
       if (routePolyline) drawRoute(map, routePolyline);
@@ -645,9 +633,10 @@ async function init() {
 
   // Restore from share link
   const p = new URLSearchParams(location.search);
-  if (p.get('alat') && p.get('alng') && p.get('blat') && p.get('blng')) {
-    state.a = { lat: +p.get('alat'), lng: +p.get('alng'), name: escapeHtml(p.get('aname') || 'Location A') };
-    state.b = { lat: +p.get('blat'), lng: +p.get('blng'), name: escapeHtml(p.get('bname') || 'Location B') };
+  const alat = +p.get('alat'), alng = +p.get('alng'), blat = +p.get('blat'), blng = +p.get('blng');
+  if (isFinite(alat) && isFinite(alng) && isFinite(blat) && isFinite(blng) && (alat || alng) && (blat || blng)) {
+    state.a = { lat: alat, lng: alng, name: escapeHtml(p.get('aname') || 'Location A') };
+    state.b = { lat: blat, lng: blng, name: escapeHtml(p.get('bname') || 'Location B') };
     document.getElementById('location-a').value = state.a.name;
     document.getElementById('location-b').value = state.b.name;
     updateControls();
