@@ -343,7 +343,7 @@ if ($action === 'autocomplete') {
         exit;
     }
 
-    $radius = 10000;
+    $radius = 5000;
 
     $priceMap = [
         'PRICE_LEVEL_FREE'          => 0,
@@ -375,6 +375,8 @@ if ($action === 'autocomplete') {
         ),
         true
     );
+
+    error_log('nearbyme response: ' . json_encode($data));
 
     $results = [];
     foreach ($data['places'] ?? [] as $p) {

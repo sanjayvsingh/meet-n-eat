@@ -332,17 +332,38 @@ async function getRouteData(a, b) {
 
 function initMap(center) {
   if (state.map) {
-    state.map.jumpTo({ center: [center.lng, center.lat], zoom: 11 });
+    state.map.jumpTo({ center: [center.lng, center.lat], zoom: 12 });
     return state.map;
   }
+
+  if (!mapboxgl) {
+    console.error('Mapbox GL not loaded');
+    return null;
+  }
+
+  const mapContainer = document.getElementById('map');
+  if (!mapContainer) {
+    console.error('Map container not found');
+    return null;
+  }
+
   mapboxgl.accessToken = MAPBOX_TOKEN;
-  state.map = new mapboxgl.Map({
-    container: 'map',
-    style: 'mapbox://styles/mapbox/streets-v12',
-    center: [center.lng, center.lat],
-    zoom: 11,
-  });
-  state.map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+  console.log('Creating map with token, center:', center);
+
+  try {
+    state.map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/streets-v12',
+      center: [center.lng, center.lat],
+      zoom: 12,
+    });
+    console.log('Map created successfully');
+    state.map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+  } catch (err) {
+    console.error('Error creating map:', err);
+    return null;
+  }
+
   return state.map;
 }
 
@@ -439,8 +460,11 @@ function renderResults(restaurants, a, b) {
   const n = restaurants.length;
   const total = state.allResults.length;
   const filtered = total > 0 && n < total;
+  const noResultsMsg = state.nearMeMode
+    ? 'No restaurants found nearby. Try expanding your search area.'
+    : 'No restaurants found in the corridor. Try locations farther apart.';
   header.textContent = n === 0
-    ? (total > 0 ? 'No restaurants match the current filters.' : 'No restaurants found in the corridor. Try locations farther apart.')
+    ? (total > 0 ? 'No restaurants match the current filters.' : noResultsMsg)
     : `${n}${filtered ? ` of ${total}` : ''} restaurant${n !== 1 ? 's' : ''} found`;
 
   list.innerHTML = '';
@@ -624,21 +648,25 @@ searchBtn.addEventListener('click', runSearch);
 async function determineUserLocation() {
   return new Promise((resolve) => {
     if (!navigator.geolocation) {
+      console.log('Geolocation not available, using IP fallback');
       fetchIPLocation().then(resolve).catch(() => resolve({ lat: 43.8, lng: -79.3 }));
       return;
     }
 
     const geolocationTimeout = setTimeout(() => {
+      console.log('Geolocation timeout, using IP fallback');
       fetchIPLocation().then(resolve).catch(() => resolve({ lat: 43.8, lng: -79.3 }));
     }, 5000);
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         clearTimeout(geolocationTimeout);
+        console.log('Got geolocation:', pos.coords.latitude, pos.coords.longitude);
         resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       },
-      () => {
+      (err) => {
         clearTimeout(geolocationTimeout);
+        console.log('Geolocation error:', err, 'using IP fallback');
         fetchIPLocation().then(resolve).catch(() => resolve({ lat: 43.8, lng: -79.3 }));
       }
     );
@@ -646,9 +674,15 @@ async function determineUserLocation() {
 }
 
 async function fetchIPLocation() {
-  const res = await fetch('api.php?action=mylocation');
-  const data = await res.json();
-  return { lat: data.lat ?? 43.8, lng: data.lng ?? -79.3 };
+  try {
+    const res = await fetch('api.php?action=mylocation');
+    const data = await res.json();
+    console.log('IP location response:', data);
+    return { lat: data.lat ?? 43.8, lng: data.lng ?? -79.3 };
+  } catch (err) {
+    console.error('fetchIPLocation error:', err);
+    throw err;
+  }
 }
 
 function drawNearMeCircle(map, lat, lng, radiusKm) {
@@ -701,13 +735,23 @@ function removeNearMeCircle(map) {
   if (map.getSource('nearbyme-circle')) map.removeSource('nearbyme-circle');
 }
 
+function removeRouteLayers(map) {
+  if (!map) return;
+  if (map.getLayer('route-line')) map.removeLayer('route-line');
+  if (map.getSource('route')) map.removeSource('route');
+  if (map.getLayer('zone-fill')) map.removeLayer('zone-fill');
+  if (map.getLayer('zone-border')) map.removeLayer('zone-border');
+  if (map.getSource('zone')) map.removeSource('zone');
+}
+
 async function runNearMeSearch(lat, lng) {
   const nearmeBtn = document.getElementById('nearbyme-btn');
   if (state.searching) return;
 
+  removeRouteLayers(state.map);
   state.searching = true;
   state.nearMeMode = true;
-  nearmeBtn.innerHTML = '<span class="material-icons">hourglass_empty</span>';
+  if (nearmeBtn) nearmeBtn.innerHTML = '<span class="material-icons">hourglass_empty</span>';
 
   try {
     document.getElementById('map-section').hidden = false;
@@ -719,12 +763,14 @@ async function runNearMeSearch(lat, lng) {
 
     const res = await fetch(`api.php?action=nearbyme&lat=${lat}&lng=${lng}`);
     const data = await res.json();
+    console.log('nearbyme API response:', data);
     if (data.error) throw new Error(data.error);
 
     const results = data.results || [];
+    console.log('Found', results.length, 'restaurants');
     state.allResults = results;
 
-    const radiusKm = 10;
+    const radiusKm = 5;
     results.forEach(r => {
       const rLat = r.geometry.location.lat;
       const rLng = r.geometry.location.lng;
@@ -809,13 +855,17 @@ async function init() {
   );
 
   state.userLocation = await determineUserLocation();
+  console.log('User location determined:', state.userLocation);
+
   initMap(state.userLocation);
+  console.log('Map initialized');
 
   state.a = { ...state.userLocation, name: 'My location' };
   state.aIsAutoFilled = true;
   document.getElementById('location-a').value = 'My location';
   document.getElementById('location-b').focus();
   updateControls();
+  console.log('Initialization complete, map should be visible');
 
   setupNearMeButton();
 
@@ -830,6 +880,9 @@ async function init() {
     document.getElementById('location-b').value = state.b.name;
     updateControls();
     runSearch();
+  } else {
+    // Auto-trigger Near me search on page load
+    runNearMeSearch(state.userLocation.lat, state.userLocation.lng);
   }
 }
 
