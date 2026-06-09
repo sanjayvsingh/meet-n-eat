@@ -4,13 +4,16 @@ Find a restaurant roughly halfway between two people's locations.
 
 ## How it works
 
-Enter two addresses — yours and a friend's — and the app finds restaurants in the corridor between you. Results are filtered to places between 25% and 75% of the straight-line distance from each person, so nobody has to backtrack. When the two locations are more than 100 km apart, the midpoint is calculated along the driving route instead.
+**Near me:** On page load, the app shows restaurants within 5 km of your current location (via browser geolocation or IP address). Click "Go" and add a friend's address to switch to two-person mode.
+
+**Two-person search:** Enter two addresses — yours and a friend's — and the app finds restaurants in the corridor between you. Results are filtered to places between 25% and 75% of the straight-line distance from each person, so nobody has to backtrack. When the two locations are more than 100 km apart, the midpoint is calculated along the driving route instead.
 
 ## Features
 
+- **Near me search** — Instantly see restaurants within 5 km of your current location
+- **Two-person search** — Find restaurants halfway between two addresses
 - Fuzzy address input with Google Places autocomplete (postal codes, transit stations, neighbourhoods, landmarks)
-- 📍 button to use device geolocation
-- Auto-searches as soon as both locations are selected
+- Auto-searches as soon as you load the page (Near me) or both locations are selected (two-person)
 - Map with a shaded corridor zone and colour-coded pins for each person and each restaurant
 - Side-by-side layout on wide screens — map stays sticky while results scroll
 - Restaurant cards showing cuisine type, rating, price level, open/closed status, and distance from each person
