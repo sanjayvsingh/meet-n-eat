@@ -314,6 +314,96 @@ if ($action === 'autocomplete') {
         'results'         => $results,
     ]);
 
+} elseif ($action === 'mylocation') {
+    $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+    if (!$ip) {
+        echo json_encode(['lat' => 43.8, 'lng' => -79.3]);
+        exit;
+    }
+
+    $result = @httpGet('http://ip-api.com/json/' . urlencode($ip) . '?fields=lat,lon,status');
+    if (!$result) {
+        echo json_encode(['lat' => 43.8, 'lng' => -79.3]);
+        exit;
+    }
+
+    $data = json_decode($result, true);
+    if (($data['status'] ?? '') === 'success') {
+        echo json_encode(['lat' => $data['lat'] ?? 43.8, 'lng' => $data['lon'] ?? -79.3]);
+    } else {
+        echo json_encode(['lat' => 43.8, 'lng' => -79.3]);
+    }
+
+} elseif ($action === 'nearbyme') {
+    $lat    = floatval($_GET['lat']    ?? 0);
+    $lng    = floatval($_GET['lng']    ?? 0);
+    if ($lat < -90 || $lat > 90 || $lng < -180 || $lng > 180) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid coordinates']);
+        exit;
+    }
+
+    $radius = 5000;
+
+    $priceMap = [
+        'PRICE_LEVEL_FREE'          => 0,
+        'PRICE_LEVEL_INEXPENSIVE'   => 1,
+        'PRICE_LEVEL_MODERATE'      => 2,
+        'PRICE_LEVEL_EXPENSIVE'     => 3,
+        'PRICE_LEVEL_VERY_EXPENSIVE'=> 4,
+    ];
+
+    $data = json_decode(
+        httpPost(
+            'https://places.googleapis.com/v1/places:searchNearby',
+            [
+                'locationRestriction' => [
+                    'circle' => [
+                        'center' => ['latitude' => $lat, 'longitude' => $lng],
+                        'radius' => $radius,
+                    ],
+                ],
+                'includedTypes'   => ['restaurant'],
+                'excludedTypes'   => ['fast_food_restaurant', 'coffee_shop', 'cafe'],
+                'rankPreference'  => 'DISTANCE',
+                'maxResultCount'  => 20,
+            ],
+            [
+                $authHeader,
+                'X-Goog-FieldMask: places.id,places.displayName,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.types,places.primaryTypeDisplayName,places.formattedAddress,places.location',
+            ]
+        ),
+        true
+    );
+
+    error_log('nearbyme response: ' . json_encode($data));
+
+    $results = [];
+    foreach ($data['places'] ?? [] as $p) {
+        $pl = isset($p['priceLevel']) ? ($priceMap[$p['priceLevel']] ?? null) : null;
+        if ($pl === 1) continue;
+        $results[] = [
+            'place_id'          => $p['id'] ?? '',
+            'name'              => $p['displayName']['text'] ?? '',
+            'rating'            => $p['rating'] ?? null,
+            'user_ratings_total'=> $p['userRatingCount'] ?? 0,
+            'price_level'       => $pl,
+            'opening_hours'     => isset($p['currentOpeningHours']['openNow'])
+                                    ? ['open_now' => $p['currentOpeningHours']['openNow']]
+                                    : null,
+            'types'             => $p['types'] ?? [],
+            'primary_type'      => $p['primaryTypeDisplayName']['text'] ?? null,
+            'vicinity'          => $p['formattedAddress'] ?? '',
+            'geometry'          => [
+                'location' => [
+                    'lat' => $p['location']['latitude']  ?? 0,
+                    'lng' => $p['location']['longitude'] ?? 0,
+                ],
+            ],
+        ];
+    }
+    echo json_encode(['status' => 'OK', 'results' => $results]);
+
 } else {
     http_response_code(400);
     echo json_encode(['error' => 'Invalid action']);

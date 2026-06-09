@@ -4,13 +4,16 @@ Find a restaurant roughly halfway between two people's locations.
 
 ## How it works
 
-Enter two addresses — yours and a friend's — and the app finds restaurants in the corridor between you. Results are filtered to places between 25% and 75% of the straight-line distance from each person, so nobody has to backtrack. When the two locations are more than 100 km apart, the midpoint is calculated along the driving route instead.
+**Near me:** On page load, the app shows restaurants within 5 km of your current location (via browser geolocation or IP address). Click "Go" and add a friend's address to switch to two-person mode.
+
+**Two-person search:** Enter two addresses — yours and a friend's — and the app finds restaurants in the corridor between you. Results are filtered to places between 25% and 75% of the straight-line distance from each person, so nobody has to backtrack. When the two locations are more than 100 km apart, the midpoint is calculated along the driving route instead.
 
 ## Features
 
+- **Near me search** — Instantly see restaurants within 5 km of your current location
+- **Two-person search** — Find restaurants halfway between two addresses
 - Fuzzy address input with Google Places autocomplete (postal codes, transit stations, neighbourhoods, landmarks)
-- 📍 button to use device geolocation
-- Auto-searches as soon as both locations are selected
+- Auto-searches as soon as you load the page (Near me) or both locations are selected (two-person)
 - Map with a shaded corridor zone and colour-coded pins for each person and each restaurant
 - Side-by-side layout on wide screens — map stays sticky while results scroll
 - Restaurant cards showing cuisine type, rating, price level, open/closed status, and distance from each person
@@ -108,6 +111,10 @@ If no driveable route exists (cross-ocean searches etc.), a friendly message is 
 ## Zone overlay
 
 The union of three circles centred at the 33%, 50%, and 67% route waypoints, each with a radius of 35% of the straight-line distance (clamped 1.5–15 km), clipped to the bounding box of the two endpoints. This matches the three Nearby Search queries and is intentionally wider than the exact road — a restaurant on a parallel street is equally valid if it's equidistant by drive time. The full driving route is shown as a line on the map.
+
+## Acknowledgments
+
+- **Near me feature** — Designed and requested by C. Prepos
 
 ## Roadmap
 

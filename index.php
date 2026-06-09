@@ -36,7 +36,6 @@ $mapboxToken = defined('MAPBOX_TOKEN') ? MAPBOX_TOKEN : '';
             autocomplete="off"
             spellcheck="false"
           >
-          <button class="locate-btn" data-target="a" title="Use my current location"><span class="material-icons">pin_drop</span></button>
         </div>
         <ul class="autocomplete-list" id="autocomplete-a" role="listbox"></ul>
       </div>
@@ -57,6 +56,9 @@ $mapboxToken = defined('MAPBOX_TOKEN') ? MAPBOX_TOKEN : '';
 
       <div class="action-buttons">
         <button id="search-btn" disabled>Go</button>
+        <button id="nearbyme-btn" title="Search nearby restaurants">
+          <span class="material-icons">pin_drop</span>
+        </button>
         <button id="share-btn" hidden title="Copy share link">
           <span class="material-icons">share</span>
         </button>
@@ -66,7 +68,7 @@ $mapboxToken = defined('MAPBOX_TOKEN') ? MAPBOX_TOKEN : '';
 
     <div class="content-area">
 
-    <section class="map-section" id="map-section" hidden>
+    <section class="map-section" id="map-section">
       <div id="map"></div>
     </section>
 
