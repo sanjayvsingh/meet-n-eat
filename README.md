@@ -109,6 +109,10 @@ If no driveable route exists (cross-ocean searches etc.), a friendly message is 
 
 The union of three circles centred at the 33%, 50%, and 67% route waypoints, each with a radius of 35% of the straight-line distance (clamped 1.5–15 km), clipped to the bounding box of the two endpoints. This matches the three Nearby Search queries and is intentionally wider than the exact road — a restaurant on a parallel street is equally valid if it's equidistant by drive time. The full driving route is shown as a line on the map.
 
+## Acknowledgments
+
+- **Near me feature** — Designed and requested by C. Prepos
+
 ## Roadmap
 
 - Pagination to surface more results in dense areas

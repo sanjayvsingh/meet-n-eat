@@ -14,6 +14,9 @@ const state = {
   sortBy: 'rating',
   midpoint: null,
   searching: false,
+  userLocation: null,
+  aIsAutoFilled: false,
+  nearMeMode: false,
 };
 
 // --- Utilities ---
@@ -150,6 +153,17 @@ function setupInput(inputEl, listEl, targetKey) {
   inputEl.addEventListener('blur', () => {
     setTimeout(() => { listEl.innerHTML = ''; }, 150);
   });
+
+  if (targetKey === 'a') {
+    inputEl.addEventListener('focus', () => {
+      if (state.aIsAutoFilled) {
+        inputEl.value = '';
+        state.a = null;
+        state.aIsAutoFilled = false;
+        updateControls();
+      }
+    });
+  }
 }
 
 function setupLocateButton(btn, inputEl, targetKey) {
@@ -512,6 +526,8 @@ async function runSearch() {
   if (!a || !b || state.searching) return;
   if (!isFinite(a.lat) || !isFinite(a.lng) || !isFinite(b.lat) || !isFinite(b.lng)) return;
 
+  removeNearMeCircle(state.map);
+  state.nearMeMode = false;
   state.searching = true;
   searchBtn.disabled = true;
 
@@ -603,6 +619,172 @@ async function runSearch() {
 
 searchBtn.addEventListener('click', runSearch);
 
+// --- Location determination ---
+
+async function determineUserLocation() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      fetchIPLocation().then(resolve).catch(() => resolve({ lat: 43.8, lng: -79.3 }));
+      return;
+    }
+
+    const geolocationTimeout = setTimeout(() => {
+      fetchIPLocation().then(resolve).catch(() => resolve({ lat: 43.8, lng: -79.3 }));
+    }, 5000);
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        clearTimeout(geolocationTimeout);
+        resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      },
+      () => {
+        clearTimeout(geolocationTimeout);
+        fetchIPLocation().then(resolve).catch(() => resolve({ lat: 43.8, lng: -79.3 }));
+      }
+    );
+  });
+}
+
+async function fetchIPLocation() {
+  const res = await fetch('api.php?action=mylocation');
+  const data = await res.json();
+  return { lat: data.lat ?? 43.8, lng: data.lng ?? -79.3 };
+}
+
+function drawNearMeCircle(map, lat, lng, radiusKm) {
+  if (map.getSource('nearbyme-circle')) {
+    map.getSource('nearbyme-circle').setData(makeCircleGeoJSON(lat, lng, radiusKm));
+    return;
+  }
+
+  const geojson = makeCircleGeoJSON(lat, lng, radiusKm);
+  map.addSource('nearbyme-circle', { type: 'geojson', data: geojson });
+  map.addLayer({
+    id: 'nearbyme-circle-fill',
+    type: 'fill',
+    source: 'nearbyme-circle',
+    paint: { 'fill-color': '#ec4899', 'fill-opacity': 0.08 },
+  });
+  map.addLayer({
+    id: 'nearbyme-circle-border',
+    type: 'line',
+    source: 'nearbyme-circle',
+    paint: { 'line-color': '#ec4899', 'line-width': 2 },
+  });
+}
+
+function makeCircleGeoJSON(lat, lng, radiusKm) {
+  const points = [];
+  const numSegments = 64;
+  for (let i = 0; i < numSegments; i++) {
+    const angle = (i / numSegments) * 2 * Math.PI;
+    const dx = radiusKm * Math.cos(angle);
+    const dy = radiusKm * Math.sin(angle);
+
+    const latOffset = dy / 111.0;
+    const lngOffset = dx / (111.0 * Math.cos(lat * Math.PI / 180));
+
+    points.push([lng + lngOffset, lat + latOffset]);
+  }
+  points.push(points[0]);
+
+  return {
+    type: 'Feature',
+    geometry: { type: 'Polygon', coordinates: [points] },
+  };
+}
+
+function removeNearMeCircle(map) {
+  if (!map) return;
+  if (map.getLayer('nearbyme-circle-fill')) map.removeLayer('nearbyme-circle-fill');
+  if (map.getLayer('nearbyme-circle-border')) map.removeLayer('nearbyme-circle-border');
+  if (map.getSource('nearbyme-circle')) map.removeSource('nearbyme-circle');
+}
+
+async function runNearMeSearch(lat, lng) {
+  const nearmeBtn = document.getElementById('nearbyme-btn');
+  if (state.searching) return;
+
+  state.searching = true;
+  state.nearMeMode = true;
+  nearmeBtn.innerHTML = '<span class="material-icons">hourglass_empty</span>';
+
+  try {
+    document.getElementById('map-section').hidden = false;
+    document.getElementById('results-section').hidden = false;
+    document.getElementById('results-header').textContent = 'Searching…';
+    document.getElementById('results-list').innerHTML = '<div class="search-loading">Finding nearby restaurants…</div>';
+
+    const map = initMap({ lat, lng });
+
+    const res = await fetch(`api.php?action=nearbyme&lat=${lat}&lng=${lng}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const results = data.results || [];
+    state.allResults = results;
+
+    const radiusKm = 10;
+    results.forEach(r => {
+      const rLat = r.geometry.location.lat;
+      const rLng = r.geometry.location.lng;
+      r._dA        = haversineKm(lat, lng, rLat, rLng);
+      r._dB        = 0;
+      r._dMidpoint = haversineKm(lat, lng, rLat, rLng);
+    });
+
+    state.midpoint = { lat, lng };
+
+    const displayResults = applySort(applyFilters(results));
+
+    const applyMapLayers = () => {
+      drawNearMeCircle(map, lat, lng, radiusKm);
+      placeMarker(map, lat, lng, 'marker-a', 'You: My location');
+      results.forEach((r, i) => {
+        const el = placeMarker(
+          map,
+          r.geometry.location.lat,
+          r.geometry.location.lng,
+          'marker-restaurant',
+          r.name
+        );
+        el.dataset.index = i;
+        el.addEventListener('click', () => highlightResult(i));
+        state.markerElements.push(el);
+      });
+
+      const circleBounds = [
+        [lng - (radiusKm / 111.0), lat - (radiusKm / 111.0)],
+        [lng + (radiusKm / 111.0), lat + (radiusKm / 111.0)],
+      ];
+      map.fitBounds(circleBounds, { padding: 70, maxZoom: 14 });
+    };
+
+    if (map.isStyleLoaded()) applyMapLayers();
+    else map.once('load', applyMapLayers);
+
+    renderResults(displayResults, { lat, lng, name: 'You' }, { lat, lng, name: 'You' });
+  } catch (err) {
+    console.error(err);
+    document.getElementById('map-section').hidden = false;
+    document.getElementById('results-section').hidden = false;
+    document.getElementById('results-header').textContent = 'Search failed — please try again.';
+    document.getElementById('results-list').innerHTML = '';
+  } finally {
+    state.searching = false;
+    nearmeBtn.innerHTML = '<span class="material-icons">pin_drop</span>';
+  }
+}
+
+function setupNearMeButton() {
+  const btn = document.getElementById('nearbyme-btn');
+  btn.addEventListener('click', () => {
+    if (state.userLocation) {
+      runNearMeSearch(state.userLocation.lat, state.userLocation.lng);
+    }
+  });
+}
+
 // --- Startup ---
 
 async function init() {
@@ -625,17 +807,24 @@ async function init() {
     document.getElementById('autocomplete-b'),
     'b'
   );
-  setupLocateButton(
-    document.querySelector('.locate-btn[data-target="a"]'),
-    document.getElementById('location-a'),
-    'a'
-  );
+
+  state.userLocation = await determineUserLocation();
+  initMap(state.userLocation);
+
+  state.a = { ...state.userLocation, name: 'My location' };
+  state.aIsAutoFilled = true;
+  document.getElementById('location-a').value = 'My location';
+  document.getElementById('location-b').focus();
+  updateControls();
+
+  setupNearMeButton();
 
   // Restore from share link
   const p = new URLSearchParams(location.search);
   const alat = +p.get('alat'), alng = +p.get('alng'), blat = +p.get('blat'), blng = +p.get('blng');
   if (isFinite(alat) && isFinite(alng) && isFinite(blat) && isFinite(blng) && (alat || alng) && (blat || blng)) {
     state.a = { lat: alat, lng: alng, name: escapeHtml(p.get('aname') || 'Location A') };
+    state.aIsAutoFilled = false;
     state.b = { lat: blat, lng: blng, name: escapeHtml(p.get('bname') || 'Location B') };
     document.getElementById('location-a').value = state.a.name;
     document.getElementById('location-b').value = state.b.name;
