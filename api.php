@@ -183,6 +183,8 @@ if ($action === 'autocomplete') {
     foreach ($data['places'] ?? [] as $p) {
         $pl = isset($p['priceLevel']) ? ($priceMap[$p['priceLevel']] ?? null) : null;
         if ($pl === 1) continue;
+        // Filter to 3+ stars only
+        if (($p['rating'] ?? 0) < 3.0) continue;
         $results[] = [
             'place_id'          => $p['id'] ?? '',
             'name'              => $p['displayName']['text'] ?? '',
@@ -281,6 +283,8 @@ if ($action === 'autocomplete') {
             $seen[$id] = true;
             $pl = isset($p['priceLevel']) ? ($priceMap[$p['priceLevel']] ?? null) : null;
             if ($pl === 1) continue;
+            // Filter to 3+ stars only
+            if (($p['rating'] ?? 0) < 3.0) continue;
             $types = $p['types'] ?? [];
             $results[] = [
                 'place_id'           => $id,
@@ -376,12 +380,18 @@ if ($action === 'autocomplete') {
         true
     );
 
-    error_log('nearbyme response: ' . json_encode($data));
+    error_log('nearbyme response places count: ' . count($data['places'] ?? []));
+    if (!empty($data['places'])) {
+        error_log('First place from Google: ' . json_encode($data['places'][0]));
+    }
 
     $results = [];
     foreach ($data['places'] ?? [] as $p) {
         $pl = isset($p['priceLevel']) ? ($priceMap[$p['priceLevel']] ?? null) : null;
+        error_log('places action - place: ' . ($p['displayName']['text'] ?? 'unknown') . ', rating: ' . ($p['rating'] ?? 'null') . ', has priceLevel: ' . (isset($p['priceLevel']) ? 'yes (' . $p['priceLevel'] . ')' : 'no'));
         if ($pl === 1) continue;
+        // Filter to 3+ stars only
+        if (($p['rating'] ?? 0) < 3.0) continue;
         $results[] = [
             'place_id'          => $p['id'] ?? '',
             'name'              => $p['displayName']['text'] ?? '',

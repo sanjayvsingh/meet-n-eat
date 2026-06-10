@@ -768,6 +768,10 @@ async function runNearMeSearch(lat, lng) {
 
     const results = data.results || [];
     console.log('Found', results.length, 'restaurants');
+    if (results.length > 0) {
+      const priceLevels = results.map(r => r.price_level).filter(p => p !== null);
+      console.log('Price levels found:', new Set(priceLevels), 'distribution:', priceLevels.reduce((acc, p) => {acc[p] = (acc[p]||0)+1; return acc}, {}));
+    }
     state.allResults = results;
 
     const radiusKm = 5;
