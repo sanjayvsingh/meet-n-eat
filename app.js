@@ -648,26 +648,52 @@ searchBtn.addEventListener('click', runSearch);
 async function determineUserLocation() {
   return new Promise((resolve) => {
     if (!navigator.geolocation) {
-      console.log('Geolocation not available, using IP fallback');
-      fetchIPLocation().then(resolve).catch(() => resolve({ lat: 43.8, lng: -79.3 }));
+      console.log('[LOCATION] Geolocation API not available, trying IP-based lookup');
+      fetchIPLocation()
+        .then(loc => {
+          console.log('[LOCATION] ✓ Using IP-based location:', loc);
+          resolve(loc);
+        })
+        .catch(() => {
+          console.log('[LOCATION] ✗ IP lookup failed, using hardcoded Toronto fallback');
+          resolve({ lat: 43.8, lng: -79.3 });
+        });
       return;
     }
 
     const geolocationTimeout = setTimeout(() => {
-      console.log('Geolocation timeout, using IP fallback');
-      fetchIPLocation().then(resolve).catch(() => resolve({ lat: 43.8, lng: -79.3 }));
+      console.log('[LOCATION] Browser geolocation timeout (5s), trying IP-based lookup');
+      fetchIPLocation()
+        .then(loc => {
+          console.log('[LOCATION] ✓ Using IP-based location:', loc);
+          resolve(loc);
+        })
+        .catch(() => {
+          console.log('[LOCATION] ✗ IP lookup failed, using hardcoded Toronto fallback');
+          resolve({ lat: 43.8, lng: -79.3 });
+        });
     }, 5000);
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         clearTimeout(geolocationTimeout);
-        console.log('Got geolocation:', pos.coords.latitude, pos.coords.longitude);
-        resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        console.log('[LOCATION] ✓ Using browser geolocation (GPS/precise):', loc);
+        resolve(loc);
       },
       (err) => {
         clearTimeout(geolocationTimeout);
-        console.log('Geolocation error:', err, 'using IP fallback');
-        fetchIPLocation().then(resolve).catch(() => resolve({ lat: 43.8, lng: -79.3 }));
+        console.log('[LOCATION] Browser geolocation denied or error:', err.code, err.message);
+        console.log('[LOCATION] Trying IP-based lookup as fallback');
+        fetchIPLocation()
+          .then(loc => {
+            console.log('[LOCATION] ✓ Using IP-based location:', loc);
+            resolve(loc);
+          })
+          .catch(() => {
+            console.log('[LOCATION] ✗ IP lookup failed, using hardcoded Toronto fallback');
+            resolve({ lat: 43.8, lng: -79.3 });
+          });
       }
     );
   });
@@ -677,10 +703,15 @@ async function fetchIPLocation() {
   try {
     const res = await fetch('api.php?action=mylocation');
     const data = await res.json();
-    console.log('IP location response:', data);
-    return { lat: data.lat ?? 43.8, lng: data.lng ?? -79.3 };
+    if (data.lat && data.lng) {
+      console.log('[IP-API] Got location:', { lat: data.lat, lng: data.lng, city: data.city, isp: data.isp });
+      return { lat: data.lat, lng: data.lng };
+    } else {
+      console.log('[IP-API] No lat/lng in response:', data);
+      throw new Error('Invalid IP location response');
+    }
   } catch (err) {
-    console.error('fetchIPLocation error:', err);
+    console.error('[IP-API] Fetch or parse error:', err.message);
     throw err;
   }
 }
@@ -858,11 +889,14 @@ async function init() {
     'b'
   );
 
+  // Start map loading immediately with fallback center while geolocation resolves
+  initMap({ lat: 43.8, lng: -79.3 });
+
   state.userLocation = await determineUserLocation();
-  console.log('User location determined:', state.userLocation);
+  console.log(`%c[PAGE LOAD] User location finalized: ${state.userLocation.lat.toFixed(4)}, ${state.userLocation.lng.toFixed(4)}`, 'font-weight:bold;font-size:12px;color:#0f766e');
 
   initMap(state.userLocation);
-  console.log('Map initialized');
+  console.log('Map recentered to user location');
 
   state.a = { ...state.userLocation, name: 'My location' };
   state.aIsAutoFilled = true;

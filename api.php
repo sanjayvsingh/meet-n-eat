@@ -325,17 +325,23 @@ if ($action === 'autocomplete') {
         exit;
     }
 
-    $result = @httpGet('http://ip-api.com/json/' . urlencode($ip) . '?fields=lat,lon,status');
+    $result = @httpGet('http://ip-api.com/json/' . urlencode($ip) . '?fields=lat,lon,status,city,isp');
     if (!$result) {
-        echo json_encode(['lat' => 43.8, 'lng' => -79.3]);
+        echo json_encode(['lat' => 43.8, 'lng' => -79.3, 'error' => 'ip-api request failed']);
         exit;
     }
 
     $data = json_decode($result, true);
     if (($data['status'] ?? '') === 'success') {
-        echo json_encode(['lat' => $data['lat'] ?? 43.8, 'lng' => $data['lon'] ?? -79.3]);
+        echo json_encode([
+            'lat' => $data['lat'] ?? 43.8,
+            'lng' => $data['lon'] ?? -79.3,
+            'city' => $data['city'] ?? null,
+            'isp' => $data['isp'] ?? null,
+            'ip' => $ip
+        ]);
     } else {
-        echo json_encode(['lat' => 43.8, 'lng' => -79.3]);
+        echo json_encode(['lat' => 43.8, 'lng' => -79.3, 'error' => 'ip-api returned error: ' . ($data['status'] ?? 'unknown')]);
     }
 
 } elseif ($action === 'nearbyme') {
