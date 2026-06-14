@@ -470,7 +470,7 @@ function renderResults(restaurants, a, b) {
   list.innerHTML = '';
   restaurants.forEach((r, i) => {
     const dA = (r._dA ?? haversineKm(a.lat, a.lng, r.geometry.location.lat, r.geometry.location.lng)).toFixed(1);
-    const dB = (r._dB ?? haversineKm(b.lat, b.lng, r.geometry.location.lat, r.geometry.location.lng)).toFixed(1);
+    const dB = b ? (r._dB ?? haversineKm(b.lat, b.lng, r.geometry.location.lat, r.geometry.location.lng)).toFixed(1) : null;
 
     const rating = r.rating ? `★${r.rating} (${r.user_ratings_total.toLocaleString()})` : 'No rating';
     const price = r.price_level ? '$'.repeat(r.price_level) : '';
@@ -494,7 +494,7 @@ function renderResults(restaurants, a, b) {
         </div>
         <div class="card-distances">
           <span>${dA} km from you</span>
-          <span>${dB} km from friend</span>
+          ${dB !== null ? `<span>${dB} km from friend</span>` : ''}
         </div>
       </div>
       <a class="card-link" href="${mapsUrl}" target="_blank" rel="noopener noreferrer">View on Maps</a>
@@ -844,7 +844,7 @@ async function runNearMeSearch(lat, lng) {
     if (map.isStyleLoaded()) applyMapLayers();
     else map.once('load', applyMapLayers);
 
-    renderResults(displayResults, { lat, lng, name: 'You' }, { lat, lng, name: 'You' });
+    renderResults(displayResults, { lat, lng, name: 'You' }, null);
   } catch (err) {
     console.error(err);
     document.getElementById('map-section').hidden = false;
