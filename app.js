@@ -13,6 +13,7 @@ const state = {
   activeFilters: new Set(),
   sortBy: 'rating',
   distanceBias: 50,  // 0 = point A, 50 = midpoint, 100 = point B
+  routePoints: [],   // polyline points from the route
   midpoint: null,
   searching: false,
   userLocation: null,
@@ -275,7 +276,7 @@ function setupSort() {
       ratingBtn.classList.remove('active');
       distanceBtn.classList.add('active');
     }
-    updateBiasMarker();
+    updateBiasMarker(state.routePoints);
     refreshResults();
   });
 }
@@ -598,13 +599,30 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
-function updateBiasMarker() {
+function updateBiasMarker(routePoints) {
   if (!state.map || !state.a || !state.b) return;
 
   // Interpolate position between A and B based on slider value (0-100)
   const t = state.distanceBias / 100;
-  const biasLat = state.a.lat + (state.b.lat - state.a.lat) * t;
-  const biasLng = state.a.lng + (state.b.lng - state.a.lng) * t;
+  let biasLat = state.a.lat + (state.b.lat - state.a.lat) * t;
+  let biasLng = state.a.lng + (state.b.lng - state.a.lng) * t;
+
+  // If we have route points, snap to the closest point on the route
+  if (routePoints && routePoints.length > 0) {
+    let closestDist = Infinity;
+    let closestPoint = null;
+    for (const pt of routePoints) {
+      const dist = haversineKm(biasLat, biasLng, pt.lat, pt.lng);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestPoint = pt;
+      }
+    }
+    if (closestPoint) {
+      biasLat = closestPoint.lat;
+      biasLng = closestPoint.lng;
+    }
+  }
 
   // Create or update bias marker
   const markerEl = document.getElementById('bias-marker');
@@ -657,6 +675,7 @@ async function runSearch() {
     const routeData = await getRouteData(a, b);
     state.midpoint = routeData.midpoint;
     const routePolyline = routeData.polyline || null;
+    state.routePoints = routePolyline || [];
 
     // Results and radius are returned by the route action (searches run server-side).
     const raw = routeData.results || [];
@@ -702,6 +721,7 @@ async function runSearch() {
       if (routePolyline) drawRoute(state.map, routePolyline);
       drawZone(state.map, zoneGeoJSON);
       addMarkers(state.map, a, b, displayResults);
+      updateBiasMarker(state.routePoints);
     };
     if (state.map && state.map.isStyleLoaded()) applyMapLayers();
     else if (state.map) state.map.once('load', applyMapLayers);
