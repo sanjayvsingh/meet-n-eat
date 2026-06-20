@@ -311,9 +311,16 @@ main {
   flex-shrink: 0;
 }
 
+.sort-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .sort-btn {
-  width: 36px;
-  height: 36px;
+  padding: 0.35rem 0.6rem;
   border: 1.5px solid #ddd;
   border-radius: 6px;
   background: white;
@@ -322,8 +329,16 @@ main {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 500;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
   flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.sort-btn span.material-icons {
+  font-size: 16px;
 }
 
 .sort-btn:hover {

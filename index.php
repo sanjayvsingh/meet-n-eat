@@ -77,11 +77,14 @@ $mapboxToken = defined('MAPBOX_TOKEN') ? MAPBOX_TOKEN : '';
         <div class="results-bar-left">
           <div id="results-header"></div>
           <div class="sort-controls">
+            <span class="sort-label">Sort:</span>
             <button id="sort-rating" class="sort-btn active" title="Sort by rating">
               <span class="material-icons">star</span>
+              <span>Rating</span>
             </button>
             <button id="sort-distance" class="sort-btn" title="Sort by distance">
               <span class="material-icons">directions</span>
+              <span>Distance</span>
             </button>
             <input type="range" id="distance-bias" class="distance-slider" min="0" max="100" value="50" title="Adjust distance preference">
           </div>
