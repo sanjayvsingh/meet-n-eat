@@ -501,6 +501,7 @@ function formatCuisine(types) {
 function renderResults(restaurants, a, b) {
   const header = document.getElementById('results-header');
   const list = document.getElementById('results-list');
+  const sortControls = document.getElementById('sort-controls');
 
   const n = restaurants.length;
   const total = state.allResults.length;
@@ -511,6 +512,11 @@ function renderResults(restaurants, a, b) {
   header.textContent = n === 0
     ? (total > 0 ? 'No restaurants match the current filters.' : noResultsMsg)
     : `${n}${filtered ? ` of ${total}` : ''} restaurant${n !== 1 ? 's' : ''} found`;
+
+  // Show sort controls only when there are results
+  if (sortControls) {
+    sortControls.hidden = n === 0;
+  }
 
   list.innerHTML = '';
   restaurants.forEach((r, i) => {

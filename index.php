@@ -73,34 +73,30 @@ $mapboxToken = defined('MAPBOX_TOKEN') ? MAPBOX_TOKEN : '';
     </section>
 
     <section class="results-section" id="results-section" hidden>
-      <div class="results-bar">
-        <div class="results-bar-left">
-          <div id="results-header"></div>
-          <div class="sort-controls">
-            <span class="sort-label">Sort:</span>
-            <button id="sort-rating" class="sort-btn active" title="Sort by rating">
-              <span class="material-icons">star</span>
-              <span>Rating</span>
-            </button>
-            <button id="sort-distance" class="sort-btn" title="Sort by distance">
-              <span class="material-icons">directions</span>
-              <span>Distance</span>
-            </button>
-            <input type="range" id="distance-bias" class="distance-slider" min="0" max="100" value="50" title="Adjust distance preference">
-          </div>
-        </div>
-        <div class="filters" id="filters">
-          <button class="filter-btn" id="filter-open" data-filter="open">Open now</button>
-          <span class="filter-divider"></span>
-          <button class="filter-btn" id="filter-rating-35" data-filter="rating-35">3.5★+</button>
-          <button class="filter-btn" id="filter-rating-40" data-filter="rating-40">4.0★+</button>
-          <button class="filter-btn" id="filter-rating-45" data-filter="rating-45">4.5★+</button>
-          <span class="filter-divider"></span>
-          <button class="filter-btn" id="filter-price-1" data-filter="price-1">$</button>
-          <button class="filter-btn" id="filter-price-2" data-filter="price-2">$$</button>
-          <button class="filter-btn" id="filter-price-3" data-filter="price-3">$$$</button>
-          <button class="filter-btn" id="filter-price-4" data-filter="price-4">$$$$</button>
-        </div>
+      <div id="results-header" class="results-header"></div>
+      <div class="filters" id="filters">
+        <button class="filter-btn" id="filter-open" data-filter="open">Open now</button>
+        <span class="filter-divider"></span>
+        <button class="filter-btn" id="filter-rating-35" data-filter="rating-35">3.5★+</button>
+        <button class="filter-btn" id="filter-rating-40" data-filter="rating-40">4.0★+</button>
+        <button class="filter-btn" id="filter-rating-45" data-filter="rating-45">4.5★+</button>
+        <span class="filter-divider"></span>
+        <button class="filter-btn" id="filter-price-1" data-filter="price-1">$</button>
+        <button class="filter-btn" id="filter-price-2" data-filter="price-2">$$</button>
+        <button class="filter-btn" id="filter-price-3" data-filter="price-3">$$$</button>
+        <button class="filter-btn" id="filter-price-4" data-filter="price-4">$$$$</button>
+      </div>
+      <div class="sort-controls" id="sort-controls" hidden>
+        <span class="sort-label">Sort:</span>
+        <button id="sort-rating" class="sort-btn active" title="Sort by rating">
+          <span class="material-icons">star</span>
+          <span>Rating</span>
+        </button>
+        <button id="sort-distance" class="sort-btn" title="Sort by distance">
+          <span class="material-icons">directions</span>
+          <span>Distance</span>
+        </button>
+        <input type="range" id="distance-bias" class="distance-slider" min="0" max="100" value="50" title="Adjust distance preference">
       </div>
       <div id="results-list"></div>
     </section>
