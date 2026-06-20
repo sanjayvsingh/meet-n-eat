@@ -284,7 +284,7 @@ function setupSort() {
   });
 
   biasSlider.addEventListener('dblclick', () => {
-    // Get current bias point and search from there
+    // Get current bias point and search from there (without entering near-me mode)
     if (!state.routePoints || state.routePoints.length === 0) return;
 
     const cumulativeDists = [0];
@@ -306,7 +306,7 @@ function setupSort() {
       }
     }
 
-    runNearMeSearch(biasPoint.lat, biasPoint.lng);
+    runNearMeSearch(biasPoint.lat, biasPoint.lng, false);
   });
 }
 
@@ -915,18 +915,19 @@ function removeRouteLayers(map) {
   if (map.getSource('zone')) map.removeSource('zone');
 }
 
-async function runNearMeSearch(lat, lng) {
+async function runNearMeSearch(lat, lng, setNearMeMode = true) {
   const nearmeBtn = document.getElementById('nearbyme-btn');
   if (state.searching) return;
 
   removeRouteLayers(state.map);
   state.searching = true;
-  state.nearMeMode = true;
-  if (nearmeBtn) nearmeBtn.innerHTML = '<span class="material-icons">hourglass_empty</span>';
-
-  // Hide distance slider in near-me mode (only one location, no bias needed)
-  const biasSlider = document.getElementById('distance-bias');
-  if (biasSlider) biasSlider.style.display = 'none';
+  if (setNearMeMode) {
+    state.nearMeMode = true;
+    if (nearmeBtn) nearmeBtn.innerHTML = '<span class="material-icons">hourglass_empty</span>';
+    // Hide distance slider in near-me mode (only one location, no bias needed)
+    const biasSlider = document.getElementById('distance-bias');
+    if (biasSlider) biasSlider.style.display = 'none';
+  }
 
   try {
     document.getElementById('map-section').hidden = false;
