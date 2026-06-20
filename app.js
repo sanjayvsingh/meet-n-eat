@@ -12,6 +12,7 @@ const state = {
   allResults: [],  // full unfiltered result set, preserved for filter re-runs
   activeFilters: new Set(),
   sortBy: 'rating',
+  distanceBias: 50,  // 0 = point A, 50 = midpoint, 100 = point B
   midpoint: null,
   searching: false,
   userLocation: null,
@@ -222,10 +223,12 @@ function applyFilters(restaurants) {
 
 function applySort(restaurants) {
   const sorted = [...restaurants];
-  if (state.sortBy === 'distance' && state.midpoint) {
-    sorted.sort((x, y) => (x._dMidpoint || 0) - (y._dMidpoint || 0));
-  } else if (state.sortBy === 'price') {
-    sorted.sort((x, y) => (x.price_level || 99) - (y.price_level || 99));
+  if (state.sortBy === 'distance') {
+    sorted.sort((x, y) => {
+      const dBiasX = x._dA * (1 - state.distanceBias / 100) + x._dB * (state.distanceBias / 100);
+      const dBiasY = y._dA * (1 - state.distanceBias / 100) + y._dB * (state.distanceBias / 100);
+      return dBiasX - dBiasY;
+    });
   } else {
     sorted.sort((x, y) => {
       const rd = (y.rating || 0) - (x.rating || 0);
@@ -246,9 +249,27 @@ function refreshResults() {
 }
 
 function setupSort() {
-  document.getElementById('sort-select').addEventListener('change', (e) => {
-    state.sortBy = e.target.value;
+  const ratingBtn = document.getElementById('sort-rating');
+  const distanceBtn = document.getElementById('sort-distance');
+  const biasSlider = document.getElementById('distance-bias');
+
+  ratingBtn.addEventListener('click', () => {
+    state.sortBy = 'rating';
+    ratingBtn.classList.add('active');
+    distanceBtn.classList.remove('active');
     refreshResults();
+  });
+
+  distanceBtn.addEventListener('click', () => {
+    state.sortBy = 'distance';
+    distanceBtn.classList.add('active');
+    ratingBtn.classList.remove('active');
+    refreshResults();
+  });
+
+  biasSlider.addEventListener('input', (e) => {
+    state.distanceBias = parseFloat(e.target.value);
+    if (state.sortBy === 'distance') refreshResults();
   });
 }
 
@@ -329,6 +350,30 @@ async function getRouteData(a, b) {
 
 
 // --- Map ---
+
+function clearMapLayers() {
+  if (!state.map) return;
+
+  // Remove layers
+  ['route-line', 'zone-fill', 'nearby-circle'].forEach(layerId => {
+    if (state.map.getLayer(layerId)) {
+      state.map.removeLayer(layerId);
+    }
+  });
+
+  // Remove sources
+  ['route', 'zone', 'nearby-circle'].forEach(sourceId => {
+    if (state.map.getSource(sourceId)) {
+      state.map.removeSource(sourceId);
+    }
+  });
+
+  // Remove markers
+  state.markerElements.forEach(el => el.remove());
+  state.markerElements = [];
+  state.markers.forEach(m => m.remove());
+  state.markers = [];
+}
 
 function initMap(center) {
   if (state.map) {
@@ -555,6 +600,12 @@ async function runSearch() {
   state.searching = true;
   searchBtn.disabled = true;
 
+  // Reset distance bias slider to middle for new search
+  state.distanceBias = 50;
+  const biasSlider = document.getElementById('distance-bias');
+  biasSlider.value = 50;
+  biasSlider.style.display = '';
+
   try {
     const midpoint = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 };
     state.midpoint = midpoint;
@@ -564,7 +615,10 @@ async function runSearch() {
     document.getElementById('results-section').hidden = false;
     document.getElementById('results-header').textContent = 'Searching…';
     document.getElementById('results-list').innerHTML = '<div class="search-loading">Finding restaurants in the middle…</div>';
-    const map = initMap(midpoint);
+
+    // Clear map layers and recenter (map was initialized once at startup)
+    clearMapLayers();
+    state.map.flyTo({ center: [midpoint.lng, midpoint.lat], zoom: 12 });
 
     const routeData = await getRouteData(a, b);
     state.midpoint = routeData.midpoint;
@@ -611,12 +665,12 @@ async function runSearch() {
     const displayResults = applySort(applyFilters(inBounds));
 
     const applyMapLayers = () => {
-      if (routePolyline) drawRoute(map, routePolyline);
-      drawZone(map, zoneGeoJSON);
-      addMarkers(map, a, b, displayResults);
+      if (routePolyline) drawRoute(state.map, routePolyline);
+      drawZone(state.map, zoneGeoJSON);
+      addMarkers(state.map, a, b, displayResults);
     };
-    if (map.isStyleLoaded()) applyMapLayers();
-    else map.once('load', applyMapLayers);
+    if (state.map && state.map.isStyleLoaded()) applyMapLayers();
+    else if (state.map) state.map.once('load', applyMapLayers);
 
     renderResults(displayResults, a, b);
   } catch (err) {
@@ -628,8 +682,8 @@ async function runSearch() {
       document.getElementById('results-list').innerHTML = '';
       // Still show the two pins so the user can see what was searched
       const map = state.map || initMap({ lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 });
-      const showPins = () => { placeMarker(map, a.lat, a.lng, 'marker-a', 'You: ' + a.name); placeMarker(map, b.lat, b.lng, 'marker-b', 'Friend: ' + b.name); map.fitBounds([[a.lng, a.lat], [b.lng, b.lat]], { padding: 70 }); };
-      if (map.isStyleLoaded()) showPins(); else map.once('load', showPins);
+      const showPins = () => { placeMarker(state.map, a.lat, a.lng, 'marker-a', 'You: ' + a.name); placeMarker(state.map, b.lat, b.lng, 'marker-b', 'Friend: ' + b.name); state.map.fitBounds([[a.lng, a.lat], [b.lng, b.lat]], { padding: 70 }); };
+      if (state.map && state.map.isStyleLoaded()) showPins(); else if (state.map) state.map.once('load', showPins);
     } else {
       document.getElementById('results-header').textContent = 'Search failed — please try again.';
       document.getElementById('results-list').innerHTML = '';
@@ -784,13 +838,19 @@ async function runNearMeSearch(lat, lng) {
   state.nearMeMode = true;
   if (nearmeBtn) nearmeBtn.innerHTML = '<span class="material-icons">hourglass_empty</span>';
 
+  // Hide distance slider in near-me mode (only one location, no bias needed)
+  const biasSlider = document.getElementById('distance-bias');
+  if (biasSlider) biasSlider.style.display = 'none';
+
   try {
     document.getElementById('map-section').hidden = false;
     document.getElementById('results-section').hidden = false;
     document.getElementById('results-header').textContent = 'Searching…';
     document.getElementById('results-list').innerHTML = '<div class="search-loading">Finding nearby restaurants…</div>';
 
-    const map = initMap({ lat, lng });
+    // Clear map layers and recenter
+    clearMapLayers();
+    state.map.flyTo({ center: [lng, lat], zoom: 12 });
 
     const res = await fetch(`api.php?action=nearbyme&lat=${lat}&lng=${lng}`);
     const data = await res.json();
@@ -819,11 +879,11 @@ async function runNearMeSearch(lat, lng) {
     const displayResults = applySort(applyFilters(results));
 
     const applyMapLayers = () => {
-      drawNearMeCircle(map, lat, lng, radiusKm);
-      placeMarker(map, lat, lng, 'marker-a', 'You: My location');
+      drawNearMeCircle(state.map, lat, lng, radiusKm);
+      placeMarker(state.map, lat, lng, 'marker-a', 'You: My location');
       results.forEach((r, i) => {
         const el = placeMarker(
-          map,
+          state.map,
           r.geometry.location.lat,
           r.geometry.location.lng,
           'marker-restaurant',
@@ -838,11 +898,11 @@ async function runNearMeSearch(lat, lng) {
         [lng - (radiusKm / 111.0), lat - (radiusKm / 111.0)],
         [lng + (radiusKm / 111.0), lat + (radiusKm / 111.0)],
       ];
-      map.fitBounds(circleBounds, { padding: 70, maxZoom: 14 });
+      state.map.fitBounds(circleBounds, { padding: 70, maxZoom: 14 });
     };
 
-    if (map.isStyleLoaded()) applyMapLayers();
-    else map.once('load', applyMapLayers);
+    if (state.map && state.map.isStyleLoaded()) applyMapLayers();
+    else if (state.map) state.map.once('load', applyMapLayers);
 
     renderResults(displayResults, { lat, lng, name: 'You' }, null);
   } catch (err) {
@@ -889,14 +949,19 @@ async function init() {
     'b'
   );
 
-  // Start map loading immediately with fallback center while geolocation resolves
+  // Initialize map with fallback center while geolocation resolves
   initMap({ lat: 43.8, lng: -79.3 });
 
   state.userLocation = await determineUserLocation();
   console.log(`%c[PAGE LOAD] User location finalized: ${state.userLocation.lat.toFixed(4)}, ${state.userLocation.lng.toFixed(4)}`, 'font-weight:bold;font-size:12px;color:#0f766e');
 
-  initMap(state.userLocation);
-  console.log('Map recentered to user location');
+  // Recenter to user location (reuses existing map if created, otherwise creates new one)
+  if (state.map) {
+    state.map.flyTo({ center: [state.userLocation.lng, state.userLocation.lat], zoom: 12 });
+    console.log('Map recentered to user location');
+  } else {
+    initMap(state.userLocation);
+  }
 
   state.a = { ...state.userLocation, name: 'My location' };
   state.aIsAutoFilled = true;

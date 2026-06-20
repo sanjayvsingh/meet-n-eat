@@ -76,11 +76,15 @@ $mapboxToken = defined('MAPBOX_TOKEN') ? MAPBOX_TOKEN : '';
       <div class="results-bar">
         <div class="results-bar-left">
           <div id="results-header"></div>
-          <select id="sort-select" class="sort-select">
-            <option value="rating">Rating (best first)</option>
-            <option value="distance">Distance from midpoint</option>
-            <option value="price">Price (low to high)</option>
-          </select>
+          <div class="sort-controls">
+            <button id="sort-rating" class="sort-btn active" title="Sort by rating">
+              <span class="material-icons">star</span>
+            </button>
+            <button id="sort-distance" class="sort-btn" title="Sort by distance">
+              <span class="material-icons">place</span>
+            </button>
+            <input type="range" id="distance-bias" class="distance-slider" min="0" max="100" value="50" title="Adjust distance preference">
+          </div>
         </div>
         <div class="filters" id="filters">
           <button class="filter-btn" id="filter-open" data-filter="open">Open now</button>
