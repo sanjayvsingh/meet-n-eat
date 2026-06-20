@@ -14,6 +14,7 @@ const state = {
   sortBy: 'rating',
   distanceBias: 50,  // 0 = point A, 50 = midpoint, 100 = point B
   routePoints: [],   // polyline points from the route
+  biasMarker: null,  // mapbox marker for distance bias point
   midpoint: null,
   searching: false,
   userLocation: null,
@@ -258,6 +259,7 @@ function setupSort() {
     state.sortBy = 'rating';
     ratingBtn.classList.add('active');
     distanceBtn.classList.remove('active');
+    updateBiasMarker(state.routePoints);
     refreshResults();
   });
 
@@ -265,6 +267,7 @@ function setupSort() {
     state.sortBy = 'distance';
     distanceBtn.classList.add('active');
     ratingBtn.classList.remove('active');
+    updateBiasMarker(state.routePoints);
     refreshResults();
   });
 
@@ -278,6 +281,32 @@ function setupSort() {
     }
     updateBiasMarker(state.routePoints);
     refreshResults();
+  });
+
+  biasSlider.addEventListener('dblclick', () => {
+    // Get current bias point and search from there
+    if (!state.routePoints || state.routePoints.length === 0) return;
+
+    const cumulativeDists = [0];
+    for (let i = 1; i < state.routePoints.length; i++) {
+      const prevPt = state.routePoints[i - 1];
+      const currPt = state.routePoints[i];
+      const segDist = haversineKm(prevPt.lat, prevPt.lng, currPt.lat, currPt.lng);
+      cumulativeDists.push(cumulativeDists[i - 1] + segDist);
+    }
+
+    const totalDist = cumulativeDists[cumulativeDists.length - 1];
+    const targetDist = totalDist * (state.distanceBias / 100);
+
+    let biasPoint = state.routePoints[0];
+    for (let i = 0; i < cumulativeDists.length; i++) {
+      if (cumulativeDists[i] >= targetDist) {
+        biasPoint = state.routePoints[i];
+        break;
+      }
+    }
+
+    runNearMeSearch(biasPoint.lat, biasPoint.lng);
   });
 }
 
@@ -600,41 +629,44 @@ function escapeHtml(str) {
 }
 
 function updateBiasMarker(routePoints) {
-  if (!state.map || !state.a || !state.b) return;
-
-  // Interpolate position between A and B based on slider value (0-100)
-  const t = state.distanceBias / 100;
-  let biasLat = state.a.lat + (state.b.lat - state.a.lat) * t;
-  let biasLng = state.a.lng + (state.b.lng - state.a.lng) * t;
-
-  // If we have route points, snap to the closest point on the route
-  if (routePoints && routePoints.length > 0) {
-    let closestDist = Infinity;
-    let closestPoint = null;
-    for (const pt of routePoints) {
-      const dist = haversineKm(biasLat, biasLng, pt.lat, pt.lng);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestPoint = pt;
-      }
-    }
-    if (closestPoint) {
-      biasLat = closestPoint.lat;
-      biasLng = closestPoint.lng;
-    }
-  }
-
-  // Create or update bias marker
+  // Remove existing marker
   const markerEl = document.getElementById('bias-marker');
   if (markerEl) {
     markerEl.remove();
+    state.biasMarker = null;
+  }
+
+  // Only show marker when sorting by distance
+  if (!state.map || !state.a || !state.b || state.sortBy !== 'distance') return;
+  if (!routePoints || routePoints.length === 0) return;
+
+  // Find point along route based on slider position
+  // Calculate cumulative distance along route
+  const cumulativeDists = [0];
+  for (let i = 1; i < routePoints.length; i++) {
+    const prevPt = routePoints[i - 1];
+    const currPt = routePoints[i];
+    const segDist = haversineKm(prevPt.lat, prevPt.lng, currPt.lat, currPt.lng);
+    cumulativeDists.push(cumulativeDists[i - 1] + segDist);
+  }
+
+  const totalDist = cumulativeDists[cumulativeDists.length - 1];
+  const targetDist = totalDist * (state.distanceBias / 100);
+
+  // Find segment containing target distance
+  let targetPoint = routePoints[0];
+  for (let i = 0; i < cumulativeDists.length; i++) {
+    if (cumulativeDists[i] >= targetDist) {
+      targetPoint = routePoints[i];
+      break;
+    }
   }
 
   const el = document.createElement('div');
   el.id = 'bias-marker';
   el.className = 'bias-marker';
   el.innerHTML = '⬜';
-  new mapboxgl.Marker({ element: el }).setLngLat([biasLng, biasLat]).addTo(state.map);
+  state.biasMarker = new mapboxgl.Marker({ element: el }).setLngLat([targetPoint.lng, targetPoint.lat]).addTo(state.map);
 }
 
 // --- Search flow ---
