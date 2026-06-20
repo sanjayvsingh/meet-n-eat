@@ -96,7 +96,11 @@ $mapboxToken = defined('MAPBOX_TOKEN') ? MAPBOX_TOKEN : '';
           <span class="material-icons">directions</span>
           <span>Distance</span>
         </button>
-        <input type="range" id="distance-bias" class="distance-slider" min="0" max="100" value="50" title="Adjust distance preference">
+        <div class="slider-container">
+          <span class="slider-label slider-label-left">Me</span>
+          <input type="range" id="distance-bias" class="distance-slider" min="0" max="100" value="50" title="Adjust distance preference">
+          <span class="slider-label slider-label-right">Friend</span>
+        </div>
       </div>
       <div id="results-list"></div>
     </section>

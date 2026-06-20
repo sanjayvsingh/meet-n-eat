@@ -269,7 +269,14 @@ function setupSort() {
 
   biasSlider.addEventListener('input', (e) => {
     state.distanceBias = parseFloat(e.target.value);
-    if (state.sortBy === 'distance') refreshResults();
+    // Auto-switch to distance sort when slider moves
+    if (state.sortBy !== 'distance') {
+      state.sortBy = 'distance';
+      ratingBtn.classList.remove('active');
+      distanceBtn.classList.add('active');
+    }
+    updateBiasMarker();
+    refreshResults();
   });
 }
 
@@ -589,6 +596,27 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function updateBiasMarker() {
+  if (!state.map || !state.a || !state.b) return;
+
+  // Interpolate position between A and B based on slider value (0-100)
+  const t = state.distanceBias / 100;
+  const biasLat = state.a.lat + (state.b.lat - state.a.lat) * t;
+  const biasLng = state.a.lng + (state.b.lng - state.a.lng) * t;
+
+  // Create or update bias marker
+  const markerEl = document.getElementById('bias-marker');
+  if (markerEl) {
+    markerEl.remove();
+  }
+
+  const el = document.createElement('div');
+  el.id = 'bias-marker';
+  el.className = 'bias-marker';
+  el.innerHTML = '⬜';
+  new mapboxgl.Marker({ element: el }).setLngLat([biasLng, biasLat]).addTo(state.map);
 }
 
 // --- Search flow ---
