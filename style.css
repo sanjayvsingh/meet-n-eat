@@ -253,10 +253,16 @@ main {
 
 .marker-a {
   background: #2563eb;
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
 }
 
 .marker-b {
   background: #dc2626;
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
 }
 
 .marker-restaurant {
