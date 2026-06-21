@@ -351,26 +351,11 @@ main {
   color: white;
 }
 
-.slider-container {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-shrink: 0;
-}
-
-.slider-label {
-  font-size: 0.75rem;
-  color: #888;
-  font-weight: 500;
-  width: 32px;
-  text-align: center;
-}
-
 .distance-slider {
-  width: 100px;
-  height: 4px;
-  border-radius: 2px;
-  background: #ddd;
+  width: 140px;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, #2563eb 0%, #dc2626 100%);
   outline: none;
   -webkit-appearance: none;
   appearance: none;

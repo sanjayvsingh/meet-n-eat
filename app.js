@@ -467,6 +467,39 @@ function drawRoute(map, polylinePoints) {
   });
 }
 
+function drawLocationShades(map, a, b, radiusKm = 3) {
+  if (!a || !b) return;
+
+  // Create GeoJSON circles for location points
+  const aCircle = turf.circle([a.lng, a.lat], radiusKm, { steps: 32 });
+  const bCircle = turf.circle([b.lng, b.lat], radiusKm, { steps: 32 });
+
+  // Remove old sources if they exist
+  ['location-shade-a', 'location-shade-b'].forEach(id => {
+    if (map.getSource(id)) {
+      if (map.getLayer(id)) map.removeLayer(id);
+      map.removeSource(id);
+    }
+  });
+
+  // Add location A shade (blue)
+  map.addSource('location-shade-a', { type: 'geojson', data: aCircle });
+  map.addLayer({
+    id: 'location-shade-a',
+    type: 'fill',
+    source: 'location-shade-a',
+    paint: { 'fill-color': '#2563eb', 'fill-opacity': 0.08 },
+  });
+
+  // Add location B shade (red)
+  map.addSource('location-shade-b', { type: 'geojson', data: bCircle });
+  map.addLayer({
+    id: 'location-shade-b',
+    type: 'fill',
+    source: 'location-shade-b',
+    paint: { 'fill-color': '#dc2626', 'fill-opacity': 0.08 },
+  });
+}
 
 function drawZone(map, geojson) {
   if (!geojson) return;
@@ -750,6 +783,7 @@ async function runSearch() {
     const displayResults = applySort(applyFilters(inBounds));
 
     const applyMapLayers = () => {
+      drawLocationShades(state.map, a, b);
       if (routePolyline) drawRoute(state.map, routePolyline);
       drawZone(state.map, zoneGeoJSON);
       addMarkers(state.map, a, b, displayResults);
