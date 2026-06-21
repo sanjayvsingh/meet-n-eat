@@ -78,8 +78,16 @@ main {
   font-size: 0.95rem;
   outline: none;
   background: white;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, background-color 0.15s;
   min-width: 0;
+}
+
+#location-a {
+  background: linear-gradient(to right, rgba(37, 99, 235, 0.06) 0%, white 100%);
+}
+
+#location-b {
+  background: linear-gradient(to right, rgba(220, 38, 38, 0.06) 0%, white 100%);
 }
 
 .input-row input:focus {
