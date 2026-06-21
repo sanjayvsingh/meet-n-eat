@@ -267,7 +267,7 @@ if ($action === 'autocomplete') {
                     'includedTypes'  => ['restaurant'],
                     'excludedTypes'  => $excludedTypes,
                     'rankPreference' => 'DISTANCE',
-                    'maxResultCount' => 20,
+                    'maxResultCount' => 50,
                 ],
                 [
                     $authHeader,
